@@ -1,0 +1,57 @@
+{
+  "name": "Tally Form Reading Example",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "getAll"
+      },
+      "name": "Get All Forms",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "get",
+        "formId": "={{$json[\"id\"]}}"
+      },
+      "name": "Get Form Details",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Get All Forms": {
+      "main": [
+        [
+          {
+            "node": "Get Form Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

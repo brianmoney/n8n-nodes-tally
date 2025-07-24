@@ -1,0 +1,100 @@
+{
+  "name": "Tally Submission Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "submission",
+        "operation": "getAll",
+        "formId": "form_12345",
+        "limit": 100,
+        "returnRaw": false
+      },
+      "name": "Get Submissions",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        360,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": "your-google-sheet-id",
+        "sheetName": "Submissions",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Submission ID": "={{$json[\"submissionId\"]}}",
+            "Created At": "={{$json[\"createdAt\"]}}",
+            "Name": "={{$json[\"answers\"][\"name\"]}}",
+            "Email": "={{$json[\"answers\"][\"email\"]}}",
+            "Message": "={{$json[\"answers\"][\"message\"]}}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        580,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "2",
+          "name": "Google Sheets"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Submissions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Submissions": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
