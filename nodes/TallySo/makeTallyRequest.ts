@@ -6,42 +6,33 @@ import type {
 } from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
 
-const TALLY_API_URL = 'https://api.tally.so/graphql';
+const TALLY_API_URL = 'https://api.tally.so';
 
 /**
- * Make a GraphQL request to Tally.so API
+ * Make a REST request to Tally.so API
  */
 export async function tallyApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
-	query: string,
-	variables: IDataObject = {},
+	endpoint: string,
+	method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+	body?: IDataObject,
 ): Promise<any> {
-	const credentials = await this.getCredentials('tallySoApi');
-	
-	const options = {
-		method: 'POST' as const,
-		body: { query, variables },
-		headers: {
-			'Authorization': `Bearer ${credentials.apiToken}`,
-			'Content-Type': 'application/json',
-		},
-		json: true,
-	};
-
 	try {
+		// Get credentials manually and add Authorization header
+		const credentials = await this.getCredentials('tallySoApi');
 		const response = await this.helpers.httpRequest({
-			...options,
-			url: TALLY_API_URL,
+			method,
+			baseURL: TALLY_API_URL,
+			url: endpoint,
+			headers: {
+				'Authorization': `Bearer ${credentials.apiToken}`,
+				'Content-Type': 'application/json',
+			},
+			body,
+			json: true,
 		});
 
-		if (response.errors?.length) {
-			throw new NodeApiError(this.getNode(), {
-				message: response.errors[0].message,
-				description: response.errors[0].extensions?.code || 'GraphQL Error',
-			});
-		}
-
-		return response.data;
+		return response;
 	} catch (error) {
 		if (error instanceof NodeApiError) {
 			throw error;

@@ -1,23 +1,24 @@
 {
-	"name": "n8n-nodes-tallyso",
+   "name": "n8n-nodes-tally",
 	"version": "1.0.0",
-	"description": "n8n community node for Tally.so forms, submissions, and webhooks",
+	"description": "n8n community node for Tally.so forms and submissions",
 	"keywords": [
 		"n8n-community-node-package",
 		"tally",
 		"forms",
-		"webhooks",
-		"submissions"
+		"submissions",
+		"n8n",
+		"workflow"
 	],
 	"license": "MIT",
-	"homepage": "https://github.com/brian/n8n-nodes-tally",
+	"homepage": "https://github.com/brianmoney/n8n-nodes-tally",
 	"author": {
-		"name": "Brian",
-		"email": "brian@example.com"
+		"name": "Brian Money",
+		"email": "brianmoney@users.noreply.github.com"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/brian/n8n-nodes-tally.git"
+		"url": "git+https://github.com/brianmoney/n8n-nodes-tally.git"
 	},
 	"main": "index.js",
 	"scripts": {
@@ -26,11 +27,12 @@
 		"format": "prettier nodes credentials --write",
 		"lint": "eslint nodes credentials package.json",
 		"lintfix": "eslint nodes credentials package.json --fix",
-		"prepublishOnly": "npm run build && npm run lint -s"
+		"prepublishOnly": "npm run build"
 	},
-	"files": [
-		"dist"
-	],
+   "files": [
+	   "dist",
+	   "index.js"
+   ],
 	"n8n": {
 		"n8nNodesApiVersion": 1,
 		"credentials": [

@@ -1,0 +1,469 @@
+import {
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
+	NodeOperationError,
+	NodeConnectionType,
+} from 'n8n-workflow';
+
+import { tallyApiRequest } from './makeTallyRequest';
+import { flattenSubmission } from './transforms';
+
+export class TallySo implements INodeType {
+	description: INodeTypeDescription = {
+		displayName: 'Tally.so',
+		name: 'tallySo',
+		icon: 'file:tally.svg',
+		group: ['trigger', 'action'],
+		version: 1,
+			subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
+			description: 'Interact with Tally.so forms, submissions, and webhooks',
+			defaults: {
+				name: 'Tally.so',
+			},
+			inputs: [NodeConnectionType.Main],
+			outputs: [NodeConnectionType.Main],
+			credentials: [
+				{
+					name: 'tallySoApi',
+					required: true,
+				},
+			],
+			properties: [
+				{
+					displayName: 'Resource',
+					name: 'resource',
+					type: 'options',
+					noDataExpression: true,
+					options: [
+						{
+							name: 'Form',
+							value: 'form',
+						},
+						{
+							name: 'Submission',
+							value: 'submission',
+						},
+						{
+							name: 'Webhook',
+							value: 'webhook',
+						},
+					],
+					default: 'form',
+				},
+				// Form Operations
+				{
+					displayName: 'Operation',
+					name: 'operation',
+					type: 'options',
+					noDataExpression: true,
+					displayOptions: {
+						show: {
+							resource: ['form'],
+						},
+					},
+					options: [
+						{
+							name: 'Get All',
+							value: 'getAll',
+							description: 'Get all forms',
+							action: 'Get all forms',
+						},
+						{
+							name: 'Get',
+							value: 'get',
+							description: 'Get a single form',
+							action: 'Get a form',
+						},
+					],
+					default: 'getAll',
+				},
+				// Submission Operations
+				{
+					displayName: 'Operation',
+					name: 'operation',
+					type: 'options',
+					noDataExpression: true,
+					displayOptions: {
+						show: {
+							resource: ['submission'],
+						},
+					},
+					options: [
+						{
+							name: 'Get All',
+							value: 'getAll',
+							description: 'Get all submissions for a form',
+							action: 'Get all submissions',
+						},
+						{
+							name: 'Get',
+							value: 'get',
+							description: 'Get a single submission',
+							action: 'Get a submission',
+						},
+					],
+					default: 'getAll',
+				},
+				// Webhook Operations
+				{
+					displayName: 'Operation',
+					name: 'operation',
+					type: 'options',
+					noDataExpression: true,
+					displayOptions: {
+						show: {
+							resource: ['webhook'],
+						},
+					},
+					options: [
+						{
+							name: 'Create',
+							value: 'create',
+							description: 'Create a webhook',
+							action: 'Create a webhook',
+						},
+						{
+							name: 'Delete',
+							value: 'delete',
+							description: 'Delete a webhook',
+							action: 'Delete a webhook',
+						},
+					],
+					default: 'create',
+				},
+				// Form ID for form get operation
+				{
+					displayName: 'Form',
+					name: 'formId',
+					type: 'options',
+					typeOptions: {
+						loadOptionsMethod: 'getForms',
+					},
+					displayOptions: {
+						show: {
+							resource: ['form'],
+							operation: ['get'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The form to get',
+				},
+				// Form ID for submission operations
+				{
+					displayName: 'Form',
+					name: 'formId',
+					type: 'options',
+					typeOptions: {
+						loadOptionsMethod: 'getForms',
+					},
+					displayOptions: {
+						show: {
+							resource: ['submission'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The form to get submissions from',
+				},
+				// Submission ID for submission get operation
+				{
+					displayName: 'Submission ID',
+					name: 'submissionId',
+					type: 'string',
+					displayOptions: {
+						show: {
+							resource: ['submission'],
+							operation: ['get'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The ID of the submission to get',
+				},
+				// Submission options
+				{
+					displayName: 'Limit',
+					name: 'limit',
+					type: 'number',
+					displayOptions: {
+						show: {
+							resource: ['submission'],
+							operation: ['getAll'],
+						},
+					},
+					typeOptions: {
+						minValue: 1,
+						maxValue: 1000,
+					},
+					default: 100,
+					description: 'Maximum number of submissions to return',
+				},
+				{
+					displayName: 'Return Raw Data',
+					name: 'returnRaw',
+					type: 'boolean',
+					displayOptions: {
+						show: {
+							resource: ['submission'],
+						},
+					},
+					default: false,
+					description: 'Whether to return raw GraphQL response or flattened data',
+				},
+				// Form ID for webhook operations
+				{
+					displayName: 'Form',
+					name: 'formId',
+					type: 'options',
+					typeOptions: {
+						loadOptionsMethod: 'getForms',
+					},
+					displayOptions: {
+						show: {
+							resource: ['webhook'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The form to create webhook for',
+				},
+				// Webhook destination URL
+				{
+					displayName: 'Destination URL',
+					name: 'destinationUrl',
+					type: 'string',
+					displayOptions: {
+						show: {
+							resource: ['webhook'],
+							operation: ['create'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The webhook URL to send submissions to (n8n webhook URL)',
+				},
+				// Webhook ID for delete operation
+				{
+					displayName: 'Webhook ID',
+					name: 'webhookId',
+					type: 'string',
+					displayOptions: {
+						show: {
+							resource: ['webhook'],
+							operation: ['delete'],
+						},
+					},
+					default: '',
+					required: true,
+					description: 'The ID of the webhook to delete',
+				},
+			],
+		};
+
+	methods = {
+		loadOptions: {
+			async getForms(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				try {
+					const data = await tallyApiRequest.call(this, '/forms');
+					const forms = data.items || data || [];
+					return forms.map((form: any) => ({
+						name: form.name,
+						value: form.id,
+					}));
+				} catch (error) {
+					const message = error instanceof Error ? error.message : 'Unknown error';
+					throw new NodeOperationError(this.getNode(), `Failed to load forms: ${message}`);
+				}
+			},
+		},
+	};
+
+	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
+		const items = this.getInputData();
+		const returnData: INodeExecutionData[] = [];
+		const resource = this.getNodeParameter('resource', 0) as string;
+		const operation = this.getNodeParameter('operation', 0) as string;
+
+		for (let i = 0; i < items.length; i++) {
+			try {
+				if (resource === 'form') {
+					if (operation === 'getAll') {
+						const query = `
+							query {
+								forms {
+									id
+									name
+									createdAt
+									updatedAt
+									publishedAt
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query);
+						for (const form of data.forms) {
+							returnData.push({ json: form });
+						}
+					} else if (operation === 'get') {
+						const formId = this.getNodeParameter('formId', i) as string;
+						const query = `
+							query ($id: ID!) {
+								form(id: $id) {
+									id
+									name
+									createdAt
+									updatedAt
+									publishedAt
+									url
+									fields {
+										id
+										label
+										type
+										required
+									}
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query, { id: formId });
+						returnData.push({ json: data.form });
+					}
+				} else if (resource === 'submission') {
+					const formId = this.getNodeParameter('formId', i) as string;
+					const returnRaw = this.getNodeParameter('returnRaw', i) as boolean;
+
+					if (operation === 'getAll') {
+						const limit = this.getNodeParameter('limit', i) as number;
+						const query = `
+							query ($id: ID!, $first: Int) {
+								form(id: $id) {
+									submissions(first: $first) {
+										pageInfo {
+											endCursor
+											hasNextPage
+										}
+										nodes {
+											id
+											createdAt
+											answers {
+												fieldId
+												question
+												value
+												valueType
+											}
+										}
+									}
+									fields {
+										id
+										label
+										type
+										required
+									}
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query, { id: formId, first: limit });
+						
+						if (returnRaw) {
+							returnData.push({ json: data });
+						} else {
+							for (const submission of data.form.submissions.nodes) {
+								const flattened = flattenSubmission(submission, data.form);
+								returnData.push({ json: flattened });
+							}
+						}
+					} else if (operation === 'get') {
+						const submissionId = this.getNodeParameter('submissionId', i) as string;
+						// First get all submissions and filter (MVP approach)
+						const query = `
+							query ($id: ID!) {
+								form(id: $id) {
+									submissions(first: 1000) {
+										nodes {
+											id
+											createdAt
+											answers {
+												fieldId
+												question
+												value
+												valueType
+											}
+										}
+									}
+									fields {
+										id
+										label
+										type
+										required
+									}
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query, { id: formId });
+						const submission = data.form.submissions.nodes.find((sub: any) => sub.id === submissionId);
+						
+						if (!submission) {
+							throw new NodeOperationError(this.getNode(), `Submission with ID ${submissionId} not found`);
+						}
+
+						if (returnRaw) {
+							returnData.push({ json: submission });
+						} else {
+							const flattened = flattenSubmission(submission, data.form);
+							returnData.push({ json: flattened });
+						}
+					}
+				} else if (resource === 'webhook') {
+					const formId = this.getNodeParameter('formId', i) as string;
+
+					if (operation === 'create') {
+						const destinationUrl = this.getNodeParameter('destinationUrl', i) as string;
+						const query = `
+							mutation ($formId: ID!, $dest: String!) {
+								createWebhook(input: {formId: $formId, destination: $dest}) {
+									webhook {
+										id
+										destination
+										createdAt
+									}
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query, { formId, dest: destinationUrl });
+						returnData.push({ json: data.createWebhook.webhook });
+					} else if (operation === 'delete') {
+						const webhookId = this.getNodeParameter('webhookId', i) as string;
+						const query = `
+							mutation ($id: ID!) {
+								deleteWebhook(id: $id) {
+									success
+								}
+							}
+						`;
+						const data = await tallyApiRequest.call(this, query, { id: webhookId });
+						returnData.push({ json: { success: data.deleteWebhook.success } });
+					}
+				}
+			} catch (error) {
+				if (this.continueOnFail()) {
+					const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+					returnData.push({
+						json: {
+							error: errorMessage,
+						},
+						pairedItem: {
+							item: i,
+						},
+					});
+				} else {
+					throw error;
+				}
+			}
+		}
+
+		return [returnData];
+	}
+}

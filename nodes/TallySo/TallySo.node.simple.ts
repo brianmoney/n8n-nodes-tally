@@ -19,7 +19,7 @@ export class TallySo implements INodeType {
 		group: ['trigger', 'action'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		description: 'Interact with Tally.so forms and submissions',
+		description: 'Interact with Tally.so forms, submissions, and webhooks',
 		defaults: {
 			name: 'Tally.so',
 		},
@@ -41,10 +41,6 @@ export class TallySo implements INodeType {
 					{
 						name: 'Form',
 						value: 'form',
-					},
-					{
-						name: 'Submission',
-						value: 'submission',
 					},
 				],
 				default: 'form',
@@ -75,28 +71,6 @@ export class TallySo implements INodeType {
 				],
 				default: 'getAll',
 			},
-			// Submission Operations
-			{
-				displayName: 'Operation',
-				name: 'operation',
-				type: 'options',
-				noDataExpression: true,
-				displayOptions: {
-					show: {
-						resource: ['submission'],
-					},
-				},
-				options: [
-					{
-						name: 'Get All',
-						value: 'getAll',
-						description: 'Get all submissions for a form',
-						action: 'Get all submissions',
-					},
-				],
-				default: 'getAll',
-			},
-			// Form ID for form get operation
 			{
 				displayName: 'Form',
 				name: 'formId',
@@ -113,23 +87,6 @@ export class TallySo implements INodeType {
 				default: '',
 				required: true,
 				description: 'The form to get',
-			},
-			// Form ID for submission operations
-			{
-				displayName: 'Form',
-				name: 'formId',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getForms',
-				},
-				displayOptions: {
-					show: {
-						resource: ['submission'],
-					},
-				},
-				default: '',
-				required: true,
-				description: 'The form to get submissions from',
 			},
 		],
 	};
@@ -177,49 +134,6 @@ export class TallySo implements INodeType {
 							json: data,
 							pairedItem: { item: i },
 						});
-					}
-				} else if (resource === 'submission') {
-					const formId = this.getNodeParameter('formId', i) as string;
-					
-					if (operation === 'getAll') {
-						const data = await tallyApiRequest.call(this, `/forms/${formId}/submissions`);
-						
-						// Handle different possible response formats
-						let submissions = [];
-						if (data && Array.isArray(data)) {
-							submissions = data;
-						} else if (data && data.items && Array.isArray(data.items)) {
-							submissions = data.items;
-						} else if (data && data.data && Array.isArray(data.data)) {
-							submissions = data.data;
-						} else if (data && data.submissions && Array.isArray(data.submissions)) {
-							submissions = data.submissions;
-						} else if (data) {
-							// If data exists but isn't an array, return the raw response for debugging
-							returnData.push({
-								json: { 
-									rawResponse: data, 
-									note: 'Non-array response from submissions API',
-									endpoint: `/forms/${formId}/submissions`
-								},
-								pairedItem: { item: i },
-							});
-							continue;
-						}
-						
-						if (submissions.length === 0) {
-							returnData.push({
-								json: { message: 'No submissions found for this form', formId },
-								pairedItem: { item: i },
-							});
-						} else {
-							for (const submission of submissions) {
-								returnData.push({
-									json: submission,
-									pairedItem: { item: i },
-								});
-							}
-						}
 					}
 				}
 			} catch (error) {

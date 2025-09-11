@@ -32,14 +32,9 @@ export class TallySoApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: 'https://api.tally.so/graphql',
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-			},
-			body: {
-				query: 'query { forms { id name } }',
-			},
+			baseURL: 'https://api.tally.so',
+			url: '/forms',
+			method: 'GET',
 		},
 	};
 }

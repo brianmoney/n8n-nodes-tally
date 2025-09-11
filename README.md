@@ -1,12 +1,11 @@
-# n8n-nodes-tallyso
+# n8n-nodes-tally
 
-This is an n8n community node that lets you interact with [Tally.so](https://tally.so) forms, submissions, and webhooks in your n8n workflows.
+This is an n8n community node that lets you interact with [Tally.so](https://tally.so) forms and submissions in your n8n workflows.
 
 [Tally.so](https://tally.so) is a form builder that allows you to create beautiful forms and collect responses. This node enables you to:
 
 - 📋 **Retrieve forms** - Get all your forms or fetch details for a specific form
-- 📊 **Access submissions** - Pull form responses for processing and automation  
-- 🔗 **Manage webhooks** - Create and delete webhooks to trigger n8n workflows in real-time
+- 📊 **Access submissions** - Pull form responses for processing and automation
 
 ## Installation
 
@@ -14,13 +13,13 @@ Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes
 
 1. Go to **Settings > Community Nodes** in your n8n instance
 2. Select **Install**
-3. Enter `n8n-nodes-tallyso` as the npm package name
+3. Enter `n8n-nodes-tally` as the npm package name
 4. Click **Install**
 
 Alternatively, you can install it via npm in your n8n installation:
 
 ```bash
-npm install n8n-nodes-tallyso
+npm install n8n-nodes-tally
 ```
 
 ## Prerequisites
@@ -60,53 +59,23 @@ You need a Tally.so account and API token to use this node.
 ### Submission Resource
 
 #### Get All Submissions
-- **Purpose**: Retrieve form responses for a specific form
-- **Inputs**: 
-  - Form ID (required)
-  - Limit (default: 100, max: 1000)
-  - Return Raw Data (boolean)
+- **Purpose**: Retrieve all form responses for a specific form
+- **Input**: Form ID (selected from dropdown)
 - **Output**: Array of submission objects
 - **Features**:
-  - Automatic answer flattening for easier processing
-  - Raw mode preserves original GraphQL structure
-  - Pagination support (returns up to specified limit)
+  - Automatic pagination handling
+  - Defensive response parsing for various API response formats
+  - Error handling for forms with no submissions
 
-#### Get Submission
-- **Purpose**: Retrieve a single submission by ID
-- **Inputs**: Form ID, Submission ID
-- **Output**: Single submission object with same flattening options
-
-**Answer Flattening**: By default, submissions are flattened to make them easier to work with:
+**Response Handling**: The node automatically handles different response formats from the Tally API:
 ```json
 {
   "submissionId": "sub_123",
   "createdAt": "2025-01-01T00:00:00Z",
-  "answers": {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "message": "Hello world"
-  },
-  "_raw": { /* original submission data */ }
+  "formId": "form_456",
+  "data": { /* submission fields */ }
 }
 ```
-
-### Webhook Resource
-
-#### Create Webhook
-- **Purpose**: Register a webhook to receive real-time submission notifications
-- **Inputs**:
-  - Form ID (required)
-  - Destination URL (required - your n8n webhook URL)
-- **Output**: Created webhook details
-- **Prerequisites**: 
-  - Create an n8n Webhook node first
-  - Copy the **production** webhook URL (not test URL)
-  - Ensure the webhook accepts POST requests
-
-#### Delete Webhook
-- **Purpose**: Remove an existing webhook registration
-- **Inputs**: Webhook ID
-- **Output**: Success confirmation
 
 ## Example Workflows
 
@@ -120,26 +89,12 @@ Tally.so (Get All Submissions) → Google Sheets (Append Row)
    - Resource: Submission
    - Operation: Get All
    - Form: Select your form
-   - Return Raw Data: false (for flattened answers)
 
 2. **Google Sheets Node**:
    - Operation: Append
-   - Map submission answers to sheet columns
+   - Map submission data to sheet columns
 
-### 2. Real-time Webhook to Slack
-
-```
-Webhook (Trigger) → Tally.so (optional processing) → Slack (Send Message)
-```
-
-1. **Webhook Node**: Create webhook and copy URL
-2. **Tally.so Node**: 
-   - Resource: Webhook  
-   - Operation: Create
-   - Destination URL: Paste your webhook URL
-3. **Slack Node**: Send formatted notification
-
-### 3. Form Analysis Pipeline
+### 2. Daily Form Analysis
 
 ```
 Schedule Trigger → Tally.so (Get All Submissions) → Process Data → Send Report
@@ -147,14 +102,28 @@ Schedule Trigger → Tally.so (Get All Submissions) → Process Data → Send Re
 
 Perfect for daily/weekly form analytics and reporting.
 
-## Pagination
+### 3. Form Data to Database
 
-For large forms with many submissions, use the limit parameter and implement pagination:
+```
+Tally.so (Get All Forms) → Tally.so (Get All Submissions) → Database (Insert)
+```
 
-1. Start with `Get All Submissions` with a reasonable limit (100-500)
-2. Process the results
-3. If you need more data, check the `hasNextPage` field in raw mode
-4. Use the `endCursor` for subsequent requests
+1. Get all forms to discover available forms
+2. For each form, retrieve submissions
+3. Store in your database for analysis
+
+## API Information
+
+This node uses the Tally.so REST API endpoints:
+- `GET /forms` - List all forms
+- `GET /forms/{id}` - Get specific form details  
+- `GET /forms/{id}/submissions` - Get form submissions
+
+The node automatically handles:
+- Authentication via Bearer token
+- Different response formats from the API
+- Error handling and user-friendly error messages
+- Continue-on-fail functionality for workflow resilience
 
 ## Rate Limits
 
@@ -175,13 +144,6 @@ The node provides detailed error messages for common issues:
 
 ## Troubleshooting
 
-### Webhook Not Receiving Data
-
-1. Verify you're using the **production** webhook URL from n8n
-2. Ensure your n8n webhook node accepts POST requests
-3. Check that the webhook was created successfully in Tally.so
-4. Test the webhook URL manually with a tool like Postman
-
 ### Empty Submission Data
 
 1. Verify the form has actual submissions
@@ -194,23 +156,29 @@ The node provides detailed error messages for common issues:
 2. Verify your API token is valid in Tally.so
 3. Check your network connectivity
 
+### Form Not Loading
+
+1. Ensure your API token has the correct permissions
+2. Check that the form exists and hasn't been deleted
+3. Verify you're using the correct form ID
+
 ## Limitations
 
-Current MVP limitations:
+Current limitations:
 
+- No webhook management (webhooks not available via Tally.so public API)
 - No form creation/editing capabilities
 - No analytics data retrieval  
-- Submission pagination requires multiple requests
 - No bulk operations
 - No file upload handling for form attachments
 
 ## Version History
 
-- **v1.0.0**: Initial release with forms, submissions, and webhooks
-- Full GraphQL API integration
-- Automatic answer flattening
-- Webhook management
-- Comprehensive error handling
+- **v1.0.0**: Initial release with forms and submissions
+- REST API integration
+- Robust error handling and response parsing
+- Form dropdown population from API
+- Defensive handling of various API response formats
 
 ## Contributing
 
@@ -223,8 +191,8 @@ This is a community node. Issues, suggestions, and contributions are welcome!
 ## Support
 
 - **n8n Community**: [n8n Community Forum](https://community.n8n.io)
-- **Tally.so Docs**: [API Documentation](https://tally.so/help/integrations)
-- **Issues**: [GitHub Issues](https://github.com/brian/n8n-nodes-tally/issues)
+- **Tally.so API Docs**: [Tally Developer Documentation](https://developers.tally.so)
+- **Issues**: [GitHub Issues](https://github.com/brianmoney/n8n-nodes-tally/issues)
 
 ---
 
