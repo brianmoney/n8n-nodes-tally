@@ -174,33 +174,64 @@ Current limitations:
 
 ## Version History
 
-- **v1.0.0**: Initial release with forms and submissions
-- REST API integration
-- Robust error handling and response parsing
+- **v1.0.0**
+  - Initial release with forms and submissions
+  - REST API integration
+  - Robust error handling and response parsing
+  - Defensive handling of various API response formats
+
 ## Development
-- Defensive handling of various API response formats
+
 This repo uses the official n8n Node CLI with pnpm and Node.js >= 20.19.
 
-- Dev server with hot reload:
-## Contributing
+Prerequisites:
+- Node.js >= 20.19 (an `.nvmrc` is provided)
+- pnpm (via corepack)
+
+Setup:
+
+```bash
+pnpm install
 ```
+
+Run dev server with hot reload:
+
+```bash
 pnpm dev
 ```
 
-This starts an n8n instance on http://localhost:5678 and watches for changes to this node.
-This is a community node. Issues, suggestions, and contributions are welcome!
-- Build distributable:
+This launches n8n at http://localhost:5678 and watches this node for changes (TypeScript rebuild + live reload).
 
-```
+Build distributable:
+
+```bash
 pnpm build
 ```
-## License
-- Lint and autofix:
 
-```
+Lint and autofix:
+
+```bash
 pnpm lint
 pnpm lint:fix
 ```
+
+Optional: Use your own n8n instance (Docker/remote):
+
+```bash
+# In this repo (build + watch only)
+pnpm exec n8n-node dev --external-n8n
+
+# In your n8n environment
+# ensure the env var is set so n8n reloads extensions on changes
+export N8N_DEV_RELOAD=true
+```
+
+## Contributing
+
+This is a community node. Issues, suggestions, and contributions are welcome!
+
+## License
+
 [MIT](LICENSE)
 
 ## Support
