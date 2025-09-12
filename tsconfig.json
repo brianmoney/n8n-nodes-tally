@@ -5,7 +5,7 @@
 		"lib": ["es2019"],
 		"declaration": true,
 		"outDir": "./dist",
-		"rootDir": "./",
+		"rootDir": "./src",
 		"removeComments": true,
 		"strict": true,
 		"noImplicitAny": true,
@@ -20,6 +20,6 @@
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true
 	},
-	"include": ["credentials/**/*", "nodes/**/*"],
+	"include": ["src/**/*"],
 	"exclude": ["dist", "node_modules", "**/*.test.ts"]
 }

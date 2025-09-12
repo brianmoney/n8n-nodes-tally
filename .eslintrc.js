@@ -1,4 +1,16 @@
 module.exports = {
+  root: true,
+  parser: '@typescript-eslint/parser',
+  plugins: ['@typescript-eslint', 'n8n-nodes-base'],
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  ignorePatterns: ['dist/**', 'node_modules/**'],
+  parserOptions: {
+    ecmaVersion: 2020,
+    sourceType: 'module',
+  },
+  rules: {},
+};
+module.exports = {
 	root: true,
 	parser: '@typescript-eslint/parser',
 	parserOptions: {

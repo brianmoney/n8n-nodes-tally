@@ -177,15 +177,30 @@ Current limitations:
 - **v1.0.0**: Initial release with forms and submissions
 - REST API integration
 - Robust error handling and response parsing
-- Form dropdown population from API
+## Development
 - Defensive handling of various API response formats
+This repo uses the official n8n Node CLI with pnpm and Node.js >= 20.19.
 
+- Dev server with hot reload:
 ## Contributing
+```
+pnpm dev
+```
 
+This starts an n8n instance on http://localhost:5678 and watches for changes to this node.
 This is a community node. Issues, suggestions, and contributions are welcome!
+- Build distributable:
 
+```
+pnpm build
+```
 ## License
+- Lint and autofix:
 
+```
+pnpm lint
+pnpm lint:fix
+```
 [MIT](LICENSE)
 
 ## Support

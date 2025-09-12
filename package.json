@@ -1,5 +1,5 @@
 {
-   "name": "n8n-nodes-tally",
+	"name": "n8n-nodes-tally",
 	"version": "1.0.0",
 	"description": "n8n community node for Tally.so forms and submissions",
 	"keywords": [
@@ -21,18 +21,22 @@
 		"url": "git+https://github.com/brianmoney/n8n-nodes-tally.git"
 	},
 	"main": "index.js",
-	"scripts": {
-		"build": "tsc && gulp build:icons",
-		"dev": "tsc --watch",
-		"format": "prettier nodes credentials --write",
-		"lint": "eslint nodes credentials package.json",
-		"lintfix": "eslint nodes credentials package.json --fix",
-		"prepublishOnly": "npm run build"
+		"packageManager": "pnpm@10.16.0",
+	"engines": {
+		"node": ">=20.19.0"
 	},
-   "files": [
-	   "dist",
-	   "index.js"
-   ],
+	"scripts": {
+		"dev": "n8n-node dev",
+		"build": "n8n-node build",
+		"lint": "n8n-node lint",
+		"lint:fix": "n8n-node lint:fix",
+		"release": "n8n-node release",
+		"format": "prettier src --write"
+	},
+	"files": [
+		"dist",
+		"index.js"
+	],
 	"n8n": {
 		"n8nNodesApiVersion": 1,
 		"credentials": [
@@ -42,10 +46,10 @@
 			"dist/nodes/TallySo/TallySo.node.js"
 		]
 	},
-	"devDependencies": {
+		"devDependencies": {
+			"@n8n/node-cli": "^0.4.0",
 		"@typescript-eslint/parser": "~5.45.0",
 		"eslint-plugin-n8n-nodes-base": "~1.11.0",
-		"gulp": "^4.0.2",
 		"n8n-workflow": "*",
 		"prettier": "^2.7.1",
 		"typescript": "~4.8.4"
