@@ -56,6 +56,43 @@ You need a Tally.so account and API token to use this node.
 - **Output**: Complete form data including fields, configuration, and metadata
 - **Use case**: Inspect form structure before processing submissions
 
+#### List Questions (v1.2)
+- Purpose: List question metadata for a form (includes block UUIDs, labels, and types)
+- Input: Form ID
+- Output: Array of question objects
+
+#### Add Field (v1.2)
+- Purpose: Add a new question to a form without editing raw JSON
+- Inputs: Form, type, label, optional payload (JSON), insert position (end/index/before/after)
+- Safety: Fetch → merge → PATCH full blocks; supports Dry‑Run, Backup, and Optimistic Concurrency
+
+#### Update Field (v1.2)
+- Purpose: Update a field’s payload or label by UUID or by label resolution
+- Inputs: Form, target (UUID/Label), payloadPatch (JSON), merge strategy (merge/replace)
+- Safety: Dry‑Run preview with diff; Backup and Optimistic Concurrency supported
+
+#### Delete Field (v1.2)
+- Purpose: Remove one or more fields by UUID(s) or by label(s)
+- Inputs: Form, target selection (UUID/Label), one or more values
+- Safety: Full blocks PATCH with Dry‑Run/Backup/Optimistic
+
+#### Sync Select Options (v1.2)
+- Purpose: Sync a Select-type field’s options from incoming items
+- Inputs: Form, target field (UUID/Label), Preserve Extras (merge) flag
+- Data Shape: Each incoming item should contain { label, value }
+- Safety: Dry‑Run shows option delta counts; Backup and Optimistic supported
+
+#### Copy Questions (v1.2)
+- Purpose: Copy questions from a source form to a destination form
+- Inputs: Source Form, Destination Form, question UUIDs, insert position
+- Notes: UUIDs are regenerated; complex logic/dependencies may not port 1:1 (API errors are surfaced)
+- Safety: Dry‑Run + diff; Backup + Optimistic for destination form
+
+#### Rollback Form (v1.2, optional)
+- Purpose: Restore a form using a previous backup JSON emitted by write operations
+- Inputs: Form, backupFormJson (full JSON)
+- Safety: Dry‑Run diff supported before commit
+
 ### Submission Resource
 
 #### Get All Submissions
@@ -112,12 +149,44 @@ Tally.so (Get All Forms) → Tally.so (Get All Submissions) → Database (Insert
 2. For each form, retrieve submissions
 3. Store in your database for analysis
 
+### 4. Airtable → Tally Select Sync (v1.2)
+
+```
+Airtable (List Records) → (Map to {label, value}) → Tally.so (Sync Select Options, Dry‑Run) → Tally.so (Sync Select Options)
+```
+
+1. Map Airtable fields to label/value pairs per record
+2. Use the Tally node’s Sync Select Options with Dry‑Run first to preview changes
+3. Commit the sync by disabling Dry‑Run
+
+### 5. Copy Fields Between Forms (v1.2)
+
+```
+Tally.so (List Questions - source) → Select IDs → Tally.so (Copy Questions) → Tally.so (List Questions - dest)
+```
+
+1. List questions on the source form and pick the UUIDs to copy
+2. Run Copy Questions into the destination form at the desired position
+3. Verify with List Questions on the destination form
+
+## Safety, Concurrency, and Rollback (v1.2)
+
+Updating a form uses Tally’s PATCH and rewrites the form’s blocks. This node always fetches, merges, and patches the full array to avoid destructive edits.
+
+- Dry‑Run/Preview: Outputs proposed blocks and a diff; does not modify the form
+- Backup: Outputs the pre‑patch form JSON so you can Rollback later
+- Optimistic Concurrency: Compares updatedAt to prevent hidden overwrites
+
+If a form changed during your workflow, the node will abort with a clear message—re-run the node to avoid conflicts.
+
 ## API Information
 
 This node uses the Tally.so REST API endpoints:
 - `GET /forms` - List all forms
 - `GET /forms/{id}` - Get specific form details  
 - `GET /forms/{id}/submissions` - Get form submissions
+- `GET /forms/{id}/questions` - List questions for a form
+- `PATCH /forms/{id}` - Update a form (full blocks array is provided by this node)
 
 The node automatically handles:
 - Authentication via Bearer token
@@ -164,17 +233,21 @@ The node provides detailed error messages for common issues:
 
 ## Limitations
 
-Current limitations:
+Known limitations:
 
 - No webhook management (webhooks not available via Tally.so public API)
-- No form creation/editing capabilities
-- No analytics data retrieval  
-- No bulk operations
+- Complex dependencies/logic/groups may not fully port when copying questions
+- No analytics data retrieval
 - No file upload handling for form attachments
 
 ## Version History
 
-- **v1.0.0**
+- v1.2.0
+  - New field operations: List Questions, Add/Update/Delete Field, Sync Select Options, Copy Questions, Rollback Form
+  - Safety: Dry‑Run preview, automatic Backup JSON, Optimistic Concurrency (updatedAt)
+  - Safe PATCH flow: fetch → modify → patch full `blocks`
+
+- v1.0.0
   - Initial release with forms and submissions
   - REST API integration
   - Robust error handling and response parsing

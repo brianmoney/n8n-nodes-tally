@@ -19,10 +19,10 @@ applyTo: '**'
 
 **Goals**:
 
-* [ ] Add safe, high-level field operations that *abstract away* raw JSON editing.
-* [ ] Enable Airtable → Tally **select options sync**.
-* [ ] Enable **copying questions** (fields) from Form A → Form B.
-* [ ] Keep users safe from form data loss when using Tally **PATCH /forms/{formId}**.
+* [x] Add safe, high-level field operations that *abstract away* raw JSON editing.
+* [x] Enable Airtable → Tally **select options sync**.
+* [x] Enable **copying questions** (fields) from Form A → Form B.
+* [x] Keep users safe from form data loss when using Tally **PATCH /forms/{formId}**.
 
 **Key constraint**: Tally **PATCH** overwrites the target fields in `blocks`. Our node must always **fetch → modify → patch full `blocks`** to avoid destructive updates.
 
@@ -32,21 +32,21 @@ applyTo: '**'
 
 * **Safety first**
 
-  * [ ] Always **GET full form** before any mutation.
-  * [ ] Mutate an **in-memory clone** of `blocks` and **PATCH** the **full, merged** array.
-  * [ ] Provide **Dry‑Run/Preview**, **Automatic Backup (pre‑patch JSON)**, and **Optimistic Concurrency** (compare `updatedAt`).
+  * [x] Always **GET full form** before any mutation.
+  * [x] Mutate an **in-memory clone** of `blocks` and **PATCH** the **full, merged** array.
+  * [x] Provide **Dry‑Run/Preview**, **Automatic Backup (pre‑patch JSON)**, and **Optimistic Concurrency** (compare `updatedAt`).
 * **Ergonomic UX**
 
-  * [ ] Task-level operations: *Add Field*, *Update Field*, *Delete Field*, *Sync Select Options*, *List Questions*, *Copy Questions*.
-  * [ ] Let users pick field **by UUID** or **by label** (resolve labels via Questions endpoint).
+  * [x] Task-level operations: *Add Field*, *Update Field*, *Delete Field*, *Sync Select Options*, *List Questions*, *Copy Questions*.
+  * [x] Let users pick field **by UUID** or **by label** (resolve labels via Questions endpoint).
 * **Minimal surface area**
 
-  * [ ] Extend existing helper (`makeTallyRequest.ts`) to support `PATCH`.
-  * [ ] Keep Tally block shape **loosely typed**; don’t block unknown fields.
+  * [x] Extend existing helper (`makeTallyRequest.ts`) to support `PATCH`.
+  * [x] Keep Tally block shape **loosely typed**; don’t block unknown fields.
 * **Recoverability**
 
-  * [ ] Output **pre‑patch form JSON** for rollback.
-  * [ ] Add a simple *Rollback Form* operation (optional, low effort).
+  * [x] Output **pre‑patch form JSON** for rollback.
+  * [x] Add a simple *Rollback Form* operation (optional, low effort).
 
 ---
 
@@ -115,33 +115,33 @@ applyTo: '**'
 
 ## 5) File-by-File Tasks (Copilot: create/modify exactly)
 
-* [ ] `nodes/TallySo/TallySo.node.ts`
+* [x] `nodes/TallySo/TallySo.node.ts`
 
-  * [ ] Add `operations`: `listQuestions`, `addField`, `updateField`, `deleteField`, `syncSelectOptions`, `copyQuestions`, *(optional)* `rollbackForm`.
-  * [ ] Add inputs for each operation (resource: `form`).
-  * [ ] Implement `execute()` branches for each op using helpers below.
-  * [ ] Add `methods.loadOptions.getForms` (already exists) + `getQuestions(formId)` for question dropdowns.
+  * [x] Add `operations`: `listQuestions`, `addField`, `updateField`, `deleteField`, `syncSelectOptions`, `copyQuestions`, *(optional)* `rollbackForm`.
+  * [x] Add inputs for each operation (resource: `form`).
+  * [x] Implement `execute()` branches for each op using helpers below.
+  * [x] Add `methods.loadOptions.getForms` (already exists) + `getQuestions(formId)` for question dropdowns.
 
-* [ ] `nodes/TallySo/makeTallyRequest.ts`
+* [x] `nodes/TallySo/makeTallyRequest.ts`
 
-  * [ ] Allow `PATCH` type; export convenience wrappers: `getForm(formId)`, `listQuestions(formId)`, `updateForm(formId, body)`.
+  * [x] Allow `PATCH` type; export convenience wrappers: `getForm(formId)`, `listQuestions(formId)`, `updateForm(formId, body)`.
 
-* [ ] `nodes/TallySo/blockUtils.ts` *(new)*
+* [x] `nodes/TallySo/blockUtils.ts` *(new)*
 
-  * [ ] `cloneForm(form)`, `replaceBlock(blocks, uuid, newBlock)`, `insertBlock(blocks, block, position)`, `removeBlocks(blocks, uuids)`, `updateSelectOptions(block, options, preserveExtras)`.
-  * [ ] `ensureUniqueUuids(blocks)`; `newBlockTemplate(type, label, payload)`.
+  * [x] `cloneForm(form)`, `replaceBlock(blocks, uuid, newBlock)`, `insertBlock(blocks, block, position)`, `removeBlocks(blocks, uuids)`, `updateSelectOptions(block, options, preserveExtras)`.
+  * [x] `ensureUniqueUuids(blocks)`; `newBlockTemplate(type, label, payload)`.
 
-* [ ] `nodes/TallySo/diff.ts` *(new)*
+* [x] `nodes/TallySo/diff.ts` *(new)*
 
-  * [ ] `diffBlocks(before, after)` → summarize changes per `blockUuid` (added/updated/removed, options delta counts).
+  * [x] `diffBlocks(before, after)` → summarize changes per `blockUuid` (added/updated/removed, options delta counts).
 
-* [ ] `README.md`
+* [x] `README.md`
 
-  * [ ] Document new operations, warnings, examples, and sample workflows.
+  * [x] Document new operations, warnings, examples, and sample workflows.
 
 * [ ] `package.json`
 
-  * [ ] Ensure scripts use **pnpm** (`pnpm lint`, `pnpm build`, `pnpm dev`).
+  * [x] Ensure scripts use **pnpm** (`pnpm lint`, `pnpm build`, `pnpm dev`).
 
 ---
 
@@ -207,12 +207,12 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 
 ## 7) Acceptance Criteria
 
-* [ ] **List Questions** returns question metadata incl. block UUIDs and labels.
-* [ ] **Add/Update/Delete/Sync**: execute without requiring users to paste full form JSON.
-* [ ] **PATCH safety**: node always fetches latest, merges, and patches full `blocks`.
-* [ ] **Warnings**: UI copy present on all write ops; Dry‑Run + Backup flags available; Optimistic mode works.
-* [ ] **Copy Questions**: copied fields appear in dest form; UUIDs are unique; position respected.
-* [ ] **Docs**: README updated with examples and cautions.
+* [x] **List Questions** returns question metadata incl. block UUIDs and labels.
+* [x] **Add/Update/Delete/Sync**: execute without requiring users to paste full form JSON.
+* [x] **PATCH safety**: node always fetches latest, merges, and patches full `blocks`.
+* [x] **Warnings**: UI copy present on all write ops; Dry‑Run + Backup flags available; Optimistic mode works.
+* [x] **Copy Questions**: copied fields appear in dest form; UUIDs are unique; position respected.
+* [x] **Docs**: README updated with examples and cautions.
 * [ ] **Lint**: `eslint-plugin-n8n-nodes-base` passes.
 
 ---
