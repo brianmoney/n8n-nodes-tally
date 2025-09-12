@@ -9,7 +9,7 @@ import {
     NodeConnectionType,
 } from 'n8n-workflow';
 
-import { tallyApiRequest } from './makeTallyRequest';
+import { tallyApiRequest, listQuestions as apiListQuestions } from './makeTallyRequest';
 
 export class TallySo implements INodeType {
     description: INodeTypeDescription = {
@@ -72,6 +72,12 @@ export class TallySo implements INodeType {
                         description: 'Get a single form',
                         action: 'Get a form',
                     },
+                    {
+                        name: 'List Questions',
+                        value: 'listQuestions',
+                        description: 'List question metadata for a form',
+                        action: 'List questions for a form',
+                    },
                 ],
                 default: 'getAll',
             },
@@ -114,6 +120,24 @@ export class TallySo implements INodeType {
                 required: true,
                 description: 'The form to get',
             },
+            // Form ID for listQuestions
+            {
+                displayName: 'Form',
+                name: 'formId',
+                type: 'options',
+                typeOptions: {
+                    loadOptionsMethod: 'getForms',
+                },
+                displayOptions: {
+                    show: {
+                        resource: ['form'],
+                        operation: ['listQuestions'],
+                    },
+                },
+                default: '',
+                required: true,
+                description: 'The form to list questions for',
+            },
             // Form ID for submission operations
             {
                 displayName: 'Form',
@@ -149,6 +173,21 @@ export class TallySo implements INodeType {
                     throw new NodeOperationError(this.getNode(), `Failed to load forms: ${message}`);
                 }
             },
+            async getQuestions(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                try {
+                    const formId = this.getCurrentNodeParameter('formId') as string;
+                    if (!formId) return [];
+                    const questions = await apiListQuestions.call(this, formId);
+                    return (questions as any[]).map((q: any) => ({
+                        name: q.label || q.title || q.blockUuid || q.id,
+                        value: q.blockUuid || q.id || q.uuid,
+                        description: q.type ? `Type: ${q.type}` : undefined,
+                    }));
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    throw new NodeOperationError(this.getNode(), `Failed to load questions: ${message}`);
+                }
+            },
         },
     };
 
@@ -177,6 +216,15 @@ export class TallySo implements INodeType {
                             json: data as any,
                             pairedItem: { item: i },
                         });
+                    } else if (operation === 'listQuestions') {
+                        const formId = this.getNodeParameter('formId', i) as string;
+                        const questions = await apiListQuestions.call(this, formId);
+                        for (const q of questions as any[]) {
+                            returnData.push({
+                                json: q,
+                                pairedItem: { item: i },
+                            });
+                        }
                     }
                 } else if (resource === 'submission') {
                     const formId = this.getNodeParameter('formId', i) as string;
