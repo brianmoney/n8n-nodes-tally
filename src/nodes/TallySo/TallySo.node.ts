@@ -214,15 +214,35 @@ export class TallySo implements INodeType {
             {
                 displayName: 'Field Type',
                 name: 'fieldType',
-                type: 'string',
-                displayOptions: {
-                    show: {
-                        resource: ['form'],
-                        operation: ['addField'],
-                    },
-                },
+                type: 'options',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'] } },
+                options: [
+                    { name: 'Short Text', value: 'input' },
+                    { name: 'Long Text', value: 'textarea' },
+                    { name: 'Email', value: 'email' },
+                    { name: 'URL', value: 'url' },
+                    { name: 'Phone', value: 'phone' },
+                    { name: 'Number', value: 'number' },
+                    { name: 'Dropdown', value: 'select' },
+                    { name: 'Multiple Choice', value: 'radio' },
+                    { name: 'Checkboxes', value: 'checkboxes' },
+                    { name: 'Date', value: 'date' },
+                    { name: 'Time', value: 'time' },
+                    { name: 'Rating', value: 'rating' },
+                    { name: 'File Upload', value: 'file_upload' },
+                    { name: 'Yes/No', value: 'yes_no' },
+                    { name: 'Custom…', value: 'custom' },
+                ],
                 default: 'input',
-                description: 'Tally block type (e.g., input, select, textarea)',
+                description: 'Choose a Tally field type or select Custom to enter a raw type',
+            },
+            {
+                displayName: 'Custom Field Type',
+                name: 'customFieldType',
+                type: 'string',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'], fieldType: ['custom'] } },
+                default: '',
+                description: 'Raw Tally block type when using Custom',
             },
             {
                 displayName: 'Label',
@@ -249,6 +269,19 @@ export class TallySo implements INodeType {
                 },
                 default: '{}',
                 description: 'Type-specific payload to set on the block',
+            },
+            {
+                displayName: 'Required',
+                name: 'required',
+                type: 'boolean',
+                displayOptions: {
+                    show: {
+                        resource: ['form'],
+                        operation: ['addField'],
+                    },
+                },
+                default: false,
+                description: 'Mark the field as required',
             },
             {
                 displayName: 'Position Mode',
@@ -538,9 +571,13 @@ export class TallySo implements INodeType {
                         }
                     } else if (operation === 'addField') {
                         const formId = this.getNodeParameter('formId', i) as string;
-                        const type = this.getNodeParameter('fieldType', i) as string;
+                        const selectedType = this.getNodeParameter('fieldType', i) as string;
+                        const type = selectedType === 'custom'
+                            ? ((this.getNodeParameter('customFieldType', i) as string) || 'input')
+                            : selectedType;
                         const label = this.getNodeParameter('label', i) as string;
                         const payload = this.getNodeParameter('payload', i, {}) as Record<string, any>;
+                        const isRequired = this.getNodeParameter('required', i, false) as boolean;
                         const positionMode = this.getNodeParameter('positionMode', i, 'end') as string;
                         const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
                         const backup = this.getNodeParameter('backup', i, true) as boolean;
@@ -548,7 +585,11 @@ export class TallySo implements INodeType {
 
                         const before = await apiGetForm.call(this, formId);
                         const blocks = cloneBlocks(before.blocks || []);
-                        const block = newBlockTemplate(type, label, payload as any);
+                        const block = newBlockTemplate(
+                            type,
+                            label,
+                            { ...(payload || {}), ...(isRequired ? { required: true } : {}) } as any,
+                        );
 
                         let nextBlocks = blocks;
                         if (positionMode === 'end') {
