@@ -20,6 +20,7 @@ import {
     findBlockByUuid,
     findBlockByLabel,
     newBlockTemplate,
+    newTitleBlock,
     insertBlock,
     replaceBlock,
     removeBlocks,
@@ -237,12 +238,61 @@ export class TallySo implements INodeType {
                 description: 'Choose a Tally field type or select Custom to enter a raw type',
             },
             {
+                displayName: 'Template From Existing Field',
+                name: 'useTemplate',
+                type: 'boolean',
+                default: false,
+                description: 'Clone schema from an existing field to ensure a valid payload shape',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'] } },
+            },
+            {
+                displayName: 'Template Select By',
+                name: 'templateSelectBy',
+                type: 'options',
+                options: [
+                    { name: 'UUID', value: 'uuid' },
+                    { name: 'Label', value: 'label' },
+                ],
+                default: 'uuid',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true] } },
+            },
+            {
+                displayName: 'Template Field',
+                name: 'templateFieldUuid',
+                type: 'options',
+                typeOptions: { loadOptionsMethod: 'getQuestions' },
+                default: '',
+                description: 'Existing field to clone (by UUID)',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true], templateSelectBy: ['uuid'] } },
+            },
+            {
+                displayName: 'Template Field Label',
+                name: 'templateFieldLabel',
+                type: 'string',
+                default: '',
+                description: 'Exact label of the field to clone',
+                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true], templateSelectBy: ['label'] } },
+            },
+            {
                 displayName: 'Custom Field Type',
                 name: 'customFieldType',
                 type: 'string',
                 displayOptions: { show: { resource: ['form'], operation: ['addField'], fieldType: ['custom'] } },
                 default: '',
                 description: 'Raw Tally block type when using Custom',
+            },
+            {
+                displayName: 'Title',
+                name: 'title',
+                type: 'string',
+                displayOptions: {
+                    show: {
+                        resource: ['form'],
+                        operation: ['addField'],
+                    },
+                },
+                default: '',
+                description: 'Optional title/question text that appears above the field (creates a separate TITLE block)',
             },
             {
                 displayName: 'Label',
@@ -571,13 +621,46 @@ export class TallySo implements INodeType {
                         }
                     } else if (operation === 'addField') {
                         const formId = this.getNodeParameter('formId', i) as string;
-                        const selectedType = this.getNodeParameter('fieldType', i) as string;
+            const selectedType = this.getNodeParameter('fieldType', i) as string;
+            const toTallyType = (t: string): string => {
+                            switch (t) {
+                case 'input': return 'INPUT_TEXT';
+                case 'textarea': return 'TEXTAREA';
+                case 'email': return 'INPUT_EMAIL';
+                case 'url': return 'INPUT_URL';
+                case 'phone': return 'INPUT_PHONE';
+                case 'number': return 'NUMBER';
+                                case 'select': return 'SELECT';
+                                case 'radio': return 'RADIO';
+                                case 'checkboxes': return 'CHECKBOXES';
+                                case 'date': return 'DATE';
+                                case 'time': return 'TIME';
+                                case 'rating': return 'RATING';
+                                case 'file_upload': return 'FILE_UPLOAD';
+                                case 'yes_no': return 'YES_NO';
+                                default: return (t || '').toUpperCase();
+                            }
+                        };
                         const type = selectedType === 'custom'
-                            ? ((this.getNodeParameter('customFieldType', i) as string) || 'input')
-                            : selectedType;
+                            ? toTallyType(((this.getNodeParameter('customFieldType', i) as string) || 'TEXT'))
+                            : toTallyType(selectedType);
+                        const title = this.getNodeParameter('title', i, '') as string;
                         const label = this.getNodeParameter('label', i) as string;
-                        const payload = this.getNodeParameter('payload', i, {}) as Record<string, any>;
+                        let payload = this.getNodeParameter('payload', i, {}) as Record<string, any>;
+                        // Handle case where payload might be malformed from JSON field
+                        if (typeof payload === 'string') {
+                            try {
+                                payload = JSON.parse(payload);
+                            } catch {
+                                payload = {};
+                            }
+                        }
+                        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+                            payload = {};
+                        }
                         const isRequired = this.getNodeParameter('required', i, false) as boolean;
+                        const useTemplate = this.getNodeParameter('useTemplate', i, false) as boolean;
+                        const templateSelectBy = this.getNodeParameter('templateSelectBy', i, 'uuid') as string;
                         const positionMode = this.getNodeParameter('positionMode', i, 'end') as string;
                         const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
                         const backup = this.getNodeParameter('backup', i, true) as boolean;
@@ -585,21 +668,96 @@ export class TallySo implements INodeType {
 
                         const before = await apiGetForm.call(this, formId);
                         const blocks = cloneBlocks(before.blocks || []);
-                        const block = newBlockTemplate(
-                            type,
-                            label,
-                            { ...(payload || {}), ...(isRequired ? { required: true } : {}) } as any,
-                        );
+
+                        let block: any;
+                        if (useTemplate) {
+                            // Resolve template UUID
+                            let templateUuid = '';
+                            if (templateSelectBy === 'uuid') {
+                                templateUuid = (this.getNodeParameter('templateFieldUuid', i, '') as string) || '';
+                            } else {
+                                const templateLabel = (this.getNodeParameter('templateFieldLabel', i, '') as string) || '';
+                                const questions = await apiListQuestions.call(this, formId);
+                                const { blockUuid } = findBlockByLabel(questions as any[], templateLabel);
+                                if (!blockUuid) throw new NodeOperationError(this.getNode(), `Template field with label "${templateLabel}" not found`);
+                                templateUuid = blockUuid;
+                            }
+                            const { block: templateBlock } = findBlockByUuid(blocks as any, templateUuid);
+                            if (!templateBlock) throw new NodeOperationError(this.getNode(), `Template field with UUID ${templateUuid} not found`);
+                            const cloned = stripOrRegenUuid(templateBlock as any, true) as any;
+                            // Use template type; overlay label and payload
+                            const basePayload = (cloned.payload ? { ...cloned.payload } : {});
+                            const mergedPayload = { ...basePayload, ...(payload || {}) } as Record<string, any>;
+                            if (isRequired) mergedPayload.isRequired = true;
+                            // Clean up any legacy key
+                            if ('required' in mergedPayload) delete (mergedPayload as any).required;
+                            block = { ...cloned, label, payload: mergedPayload };
+                        } else {
+                            // Default payloads by type to satisfy Tally's schema expectations
+                            const defaultPayloadFor = (t: string): Record<string, any> => {
+                                const req = { isRequired: !!isRequired } as Record<string, any>;
+                                switch (t) {
+                                    case 'INPUT_TEXT':
+                                    case 'INPUT_EMAIL':
+                                    case 'INPUT_URL':
+                                    case 'INPUT_PHONE':
+                                        return { ...req, placeholder: '' };
+                                    case 'TEXTAREA':
+                                        return { ...req, placeholder: '' };
+                                    case 'DATE':
+                                    case 'TIME':
+                                    case 'RATING':
+                                    case 'FILE_UPLOAD':
+                                    case 'YES_NO':
+                                        return req;
+                                    case 'SELECT':
+                                    case 'RADIO':
+                                    case 'CHECKBOXES':
+                                        return { ...req, options: Array.isArray((payload as any)?.options) ? (payload as any).options : [] };
+                                    default:
+                                        return req;
+                                }
+                            };
+                            // Guard: option-based fields must have options when not templating
+                            if ((type === 'SELECT' || type === 'RADIO' || type === 'CHECKBOXES') && !Array.isArray((payload as any)?.options)) {
+                                throw new NodeOperationError(
+                                    this.getNode(),
+                                    'This field type requires options. Provide payload.options (array) or use Template/Sync Select Options.'
+                                );
+                            }
+                            const mergedPayload = { ...defaultPayloadFor(type), ...(payload || {}) };
+                            block = newBlockTemplate(type, label, mergedPayload as any);
+                        }
 
                         let nextBlocks = blocks;
+                        
+                        // Create blocks to insert - title block first if provided, then the field block
+                        const blocksToInsert: any[] = [];
+                        
+                        // Add title block if title is provided
+                        if (title && title.trim()) {
+                            blocksToInsert.push(newTitleBlock(title.trim()));
+                        }
+                        
+                        // Add the main field block
+                        blocksToInsert.push(block);
+                        
+                        // Insert blocks at the specified position
                         if (positionMode === 'end') {
-                            nextBlocks = insertBlock(blocks, block);
+                            for (const blockToInsert of blocksToInsert) {
+                                nextBlocks = insertBlock(nextBlocks, blockToInsert);
+                            }
                         } else if (positionMode === 'index') {
-                            const idx = this.getNodeParameter('positionIndex', i, 0) as number;
-                            nextBlocks = insertBlock(blocks, block, { mode: 'index', index: idx });
+                            let idx = this.getNodeParameter('positionIndex', i, 0) as number;
+                            for (const blockToInsert of blocksToInsert) {
+                                nextBlocks = insertBlock(nextBlocks, blockToInsert, { mode: 'index', index: idx });
+                                idx += 1; // keep order stable when inserting multiple blocks
+                            }
                         } else if (positionMode === 'before' || positionMode === 'after') {
                             const refUuid = this.getNodeParameter('positionRefUuid', i, '') as string;
-                            nextBlocks = insertBlock(blocks, block, { mode: positionMode as any, refUuid });
+                            for (const blockToInsert of blocksToInsert) {
+                                nextBlocks = insertBlock(nextBlocks, blockToInsert, { mode: positionMode as any, refUuid });
+                            }
                         }
 
                         if (dryRun) {

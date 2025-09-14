@@ -78,3 +78,18 @@ If issues persist, run with verbose logs and share output:
 ```bash
 DEBUG=* pnpm dev
 ```
+
+## Environment variable deprecation notice
+
+The n8n team announced a deprecation affecting environment access from nodes:
+
+- N8N_BLOCK_ENV_ACCESS_IN_NODE — the default will change from false to true in a future version.
+
+If your workflows or custom nodes access environment variables from Code node or expressions, set:
+
+```bash
+N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+```
+
+See docs for details and security implications:
+https://docs.n8n.io/hosting/configuration/environment-variables/security/

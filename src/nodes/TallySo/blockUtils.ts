@@ -5,6 +5,8 @@ export interface TallyBlock {
   uuid: string;
   type?: string;
   label?: string;
+  groupUuid?: string;
+  groupType?: string;
   payload?: Record<string, any>;
   [key: string]: any;
 }
@@ -96,12 +98,38 @@ export function ensureUniqueUuids(blocks: TallyBlock[]): TallyBlock[] {
 }
 
 export function newBlockTemplate(type: string, label: string, payload?: IDataObject): TallyBlock {
+  const uuid = generateUuid();
+  const groupUuid = generateUuid(); // Each block needs a unique groupUuid
+  
+  // Default payload structure based on field type
+  let defaultPayload = payload || {};
+  
+  // Add required fields for input types that need them
+  if (['INPUT_TEXT', 'INPUT_EMAIL', 'TEXTAREA', 'INPUT_PHONE', 'INPUT_URL'].includes(type)) {
+    defaultPayload = {
+      isRequired: false,
+      placeholder: '',
+      ...defaultPayload,
+    };
+  }
+
   return {
-    uuid: generateUuid(),
+    uuid,
     type,
     label,
-    payload: payload ? { ...payload } : undefined,
+    groupUuid,
+    groupType: type, // Most types use the same value for groupType
+    payload: Object.keys(defaultPayload).length > 0 ? defaultPayload : undefined,
   };
+}
+
+export function newTitleBlock(title: string): TallyBlock {
+  const titleBlock = newBlockTemplate('TITLE', '', {
+    safeHTMLSchema: [[title]]
+  });
+  // Title blocks use groupType 'QUESTION'
+  titleBlock.groupType = 'QUESTION';
+  return titleBlock;
 }
 
 export function updateSelectOptions(

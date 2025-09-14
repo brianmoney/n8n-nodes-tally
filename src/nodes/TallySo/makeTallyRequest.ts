@@ -67,5 +67,14 @@ export async function updateForm(
     formId: string,
     body: IDataObject,
 ): Promise<any> {
-    return tallyApiRequest.call(this, `/forms/${formId}`, 'PATCH', body);
+    try {
+        return await tallyApiRequest.call(this, `/forms/${formId}`, 'PATCH', body);
+    } catch (error) {
+        // Enhanced error for debugging 400s
+        const message = error instanceof Error ? error.message : String(error);
+        throw new NodeApiError(this.getNode(), {
+            message: `PATCH /forms/${formId} failed: ${message}`,
+            description: `Request body: ${JSON.stringify(body, null, 2)}`,
+        });
+    }
 }

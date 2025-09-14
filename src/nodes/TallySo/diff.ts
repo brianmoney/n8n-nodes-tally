@@ -41,7 +41,8 @@ export function diffBlocks(before: TallyBlock[], after: TallyBlock[]): BlockChan
   for (const [uuid, a] of afterMap.entries()) {
     const b = beforeMap.get(uuid);
     if (!b) {
-      changes.push({ uuid, type: a.type, label: a.label, change: 'added' });
+  const details: Record<string, any> | undefined = a.payload ? { payload: true } : undefined;
+  changes.push({ uuid, type: a.type, label: a.label, change: 'added', details });
       continue;
     }
     const payloadChanged = !shallowEqual(b.payload || {}, a.payload || {});

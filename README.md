@@ -65,6 +65,7 @@ You need a Tally.so account and API token to use this node.
 - Purpose: Add a new question to a form without editing raw JSON
 - Inputs: Form, type, label, optional payload (JSON), insert position (end/index/before/after)
 - Safety: Fetch → merge → PATCH full blocks; supports Dry‑Run, Backup, and Optimistic Concurrency
+  - Tip: If you see a 400 error when adding a field, enable "Template From Existing Field" to clone a valid schema from an existing question, then override the label and payload as needed.
 
 #### Update Field (v1.2)
 - Purpose: Update a field’s payload or label by UUID or by label resolution

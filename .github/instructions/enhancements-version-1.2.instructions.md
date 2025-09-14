@@ -96,20 +96,20 @@ applyTo: '**'
 
 ## 3) Node UI/UX Notes (n8n `properties`)
 
-* [ ] Add **big warning** to all write ops: *“This rewrites form `blocks`. We fetch and merge for you, but anything not included may be removed. Use Dry‑Run and Backup.”*
-* [ ] **Field Selector**: radio → *By UUID* / *By Label*. If *By Label*, node calls **List Questions** to resolve.
-* [ ] **Dry‑Run/Preview**: boolean. If true → output proposed `blocks` + a field‑level diff; skip PATCH.
-* [ ] **Backup**: default ON. Output `previousForm` (full JSON) in `binary` or `json` for rollback.
-* [ ] **Optimistic Concurrency**: when enabled, compare `updatedAt` from initial GET vs a fast GET before PATCH; abort if changed.
+* [x] Add **big warning** to all write ops: *“This rewrites form `blocks`. We fetch and merge for you, but anything not included may be removed. Use Dry‑Run and Backup.”*
+* [x] **Field Selector**: radio → *By UUID* / *By Label*. If *By Label*, node calls **List Questions** to resolve.
+* [x] **Dry‑Run/Preview**: boolean. If true → output proposed `blocks` + a field‑level diff; skip PATCH.
+* [x] **Backup**: default ON. Output `previousForm` (full JSON) in `binary` or `json` for rollback.
+* [x] **Optimistic Concurrency**: when enabled, compare `updatedAt` from initial GET vs a fast GET before PATCH; abort if changed.
 
 ---
 
 ## 4) Data & Helpers
 
-* [ ] **Types**: define lightweight interfaces (`TallyForm`, `TallyBlock`, `TallySelectOption`) with index signatures to allow pass‑through fields.
-* [ ] **ID utils**: `generateUuid()`, `findBlockByUuid()`, `findBlockByLabel(questions, label)`.
-* [ ] **Diff**: shallow diff for `payload` (and optionally options list) to power Dry‑Run summary.
-* [ ] **HTTP**: extend `tallyApiRequest()` to accept `PATCH` and generic body; keep headers & base URL.
+* [x] **Types**: define lightweight interfaces (`TallyForm`, `TallyBlock`, `TallySelectOption`) with index signatures to allow pass‑through fields.
+* [x] **ID utils**: `generateUuid()`, `findBlockByUuid()`, `findBlockByLabel(questions, label)`.
+* [x] **Diff**: shallow diff for `payload` (and optionally options list) to power Dry‑Run summary.
+* [x] **HTTP**: extend `tallyApiRequest()` to accept `PATCH` and generic body; keep headers & base URL.
 
 ---
 
@@ -139,7 +139,7 @@ applyTo: '**'
 
   * [x] Document new operations, warnings, examples, and sample workflows.
 
-* [ ] `package.json`
+* [x] `package.json`
 
   * [x] Ensure scripts use **pnpm** (`pnpm lint`, `pnpm build`, `pnpm dev`).
 
