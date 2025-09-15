@@ -16,7 +16,7 @@ export class TallySo implements INodeType {
 		displayName: 'Tally.so',
 		name: 'tallySo',
 		icon: 'file:tally.svg',
-		group: ['trigger', 'action'],
+		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Interact with Tally.so forms and submissions',
@@ -185,7 +185,7 @@ export class TallySo implements INodeType {
 						const data = await tallyApiRequest.call(this, `/forms/${formId}/submissions`);
 						
 						// Handle different possible response formats
-						let submissions = [];
+						let submissions: any[] = [];
 						if (data && Array.isArray(data)) {
 							submissions = data;
 						} else if (data && data.items && Array.isArray(data.items)) {

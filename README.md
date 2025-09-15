@@ -63,9 +63,11 @@ You need a Tally.so account and API token to use this node.
 
 #### Add Field (v1.2)
 - Purpose: Add a new question to a form without editing raw JSON
-- Inputs: Form, type, label, optional payload (JSON), insert position (end/index/before/after)
+- Inputs: Form, Type, Label, Placeholder (for input types), Options (JSON) for option-based types, Payload (JSON) for non-option types, insert position (end/index/before/after)
+- Behavior:
+  - Option-based types (Dropdown, Multiple Choice, Checkboxes, Multi-select): Provide Options (JSON) like ["Option 1","Option 2"]. The node generates one block per option and hides Payload (JSON) to avoid confusion.
+  - Input types (Short/Long Text, Email, URL, Phone, Number, Date, Time): Placeholder is merged into payload; if Placeholder is empty, Label is used as the placeholder. Payload (JSON) is merged on top; Required toggle sets payload.isRequired.
 - Safety: Fetch → merge → PATCH full blocks; supports Dry‑Run, Backup, and Optimistic Concurrency
-  - Tip: If you see a 400 error when adding a field, enable "Template From Existing Field" to clone a valid schema from an existing question, then override the label and payload as needed.
 
 #### Update Field (v1.2)
 - Purpose: Update a field’s payload or label by UUID or by label resolution
@@ -77,11 +79,7 @@ You need a Tally.so account and API token to use this node.
 - Inputs: Form, target selection (UUID/Label), one or more values
 - Safety: Full blocks PATCH with Dry‑Run/Backup/Optimistic
 
-#### Sync Select Options (v1.2)
-- Purpose: Sync a Select-type field’s options from incoming items
-- Inputs: Form, target field (UUID/Label), Preserve Extras (merge) flag
-- Data Shape: Each incoming item should contain { label, value }
-- Safety: Dry‑Run shows option delta counts; Backup and Optimistic supported
+<!-- Sync Select Options was removed in favor of higher-level field ops in this release. -->
 
 #### Copy Questions (v1.2)
 - Purpose: Copy questions from a source form to a destination form
@@ -89,10 +87,20 @@ You need a Tally.so account and API token to use this node.
 - Notes: UUIDs are regenerated; complex logic/dependencies may not port 1:1 (API errors are surfaced)
 - Safety: Dry‑Run + diff; Backup + Optimistic for destination form
 
-#### Rollback Form (v1.2, optional)
-- Purpose: Restore a form using a previous backup JSON emitted by write operations
-- Inputs: Form, backupFormJson (full JSON)
-- Safety: Dry‑Run diff supported before commit
+Title handling when copying:
+
+- Selective copy: If a question group is copied and it has an immediately preceding TITLE block (groupType=QUESTION), the node will automatically include that TITLE to preserve context.
+- Copy All: The node skips auto‑inserting preceding TITLEs when their own title groups are already included by the “Copy All” selection, avoiding duplicate TITLEs in the destination.
+- Tip: Use Dry‑Run first to preview the proposed blocks and confirm titles appear as expected without duplication.
+
+#### Rollback Form (v1.2)
+- Purpose: Restore, copy, or create forms from JSON
+- Inputs: Form (select a destination form or “— Create New —”), Backup Form JSON (or leave empty to consume incoming `$json.backup`, `$json.form`, or `$json`)
+- Modes:
+  1) Save JSON and restore later: keep the `previousForm` JSON from write ops and use it here to roll back.
+  2) Copy an existing form: wire Tally “Get Form” → “Rollback Form” and leave JSON empty; the node uses `$json.form`. This works across accounts/instances.
+  3) Create New: choose “— Create New —” in the Form dropdown to POST a brand new form from the JSON.
+- Safety: Dry‑Run/Preview shows proposed blocks and a diff for overwrite flows; Optimistic Concurrency applies to overwrite (PATCH) only.
 
 ### Submission Resource
 
@@ -161,6 +169,24 @@ Airtable (List Records) → (Map to {label, value}) → Tally.so (Sync Select Op
 3. Commit the sync by disabling Dry‑Run
 
 ### 5. Copy Fields Between Forms (v1.2)
+### 6. Add Field examples (v1.2)
+
+- Add Multiple Choice with options:
+
+  - Type: Multiple Choice
+  - Title: Favorite Color
+  - Options (JSON): ["Red","Green","Blue"]
+  - Required: true
+  - Dry‑Run first to preview per-option blocks
+
+- Add Phone input with placeholder via Label fallback:
+
+  - Type: Phone
+  - Title: Contact Number
+  - Label: (XXX) XXX-XXXX
+  - Placeholder: (leave empty to use Label)
+  - Required: true
+  - Dry‑Run to verify payload includes placeholder and internationalFormat
 
 ```
 Tally.so (List Questions - source) → Select IDs → Tally.so (Copy Questions) → Tally.so (List Questions - dest)
@@ -169,6 +195,7 @@ Tally.so (List Questions - source) → Select IDs → Tally.so (Copy Questions) 
 1. List questions on the source form and pick the UUIDs to copy
 2. Run Copy Questions into the destination form at the desired position
 3. Verify with List Questions on the destination form
+  - Note on titles: In selective copies, the preceding TITLE is included automatically when present; in Copy All mode, title duplication is avoided by design.
 
 ## Safety, Concurrency, and Rollback (v1.2)
 

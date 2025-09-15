@@ -78,3 +78,19 @@ export async function updateForm(
         });
     }
 }
+
+// Create a new form
+export async function createForm(
+    this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+    body: IDataObject,
+): Promise<any> {
+    try {
+        return await tallyApiRequest.call(this, `/forms`, 'POST', body);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new NodeApiError(this.getNode(), {
+            message: `POST /forms failed: ${message}`,
+            description: `Request body: ${JSON.stringify(body, null, 2)}`,
+        });
+    }
+}

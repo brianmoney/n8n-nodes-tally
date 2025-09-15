@@ -14,6 +14,7 @@ import {
     listQuestions as apiListQuestions,
     getForm as apiGetForm,
     updateForm as apiUpdateForm,
+    createForm as apiCreateForm,
 } from './makeTallyRequest';
 import {
     cloneBlocks,
@@ -24,9 +25,11 @@ import {
     insertBlock,
     replaceBlock,
     removeBlocks,
-    updateSelectOptions,
-    stripOrRegenUuid,
     ensureUniqueUuids,
+    generateUuid,
+    cloneGroupBlocks,
+    resolveGroupUuidByBlockUuid,
+    cloneBlockWithNewIds,
 } from './blockUtils';
 import { diffBlocks } from './diff';
 
@@ -35,7 +38,7 @@ export class TallySo implements INodeType {
         displayName: 'Tally.so',
         name: 'tallySo',
         icon: 'file:tally.svg',
-        group: ['trigger', 'action'],
+    group: ['transform'],
         version: 1,
         subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
         description: 'Interact with Tally.so forms and submissions',
@@ -115,12 +118,7 @@ export class TallySo implements INodeType {
                         description: 'Delete one or more fields. WARNING: This rewrites the form blocks via PATCH.',
                         action: 'Delete field(s)',
                     },
-                    {
-                        name: 'Sync Select Options',
-                        value: 'syncSelectOptions',
-                        description: 'Sync select options from incoming items. WARNING: This rewrites the form blocks via PATCH.',
-                        action: 'Sync select options',
-                    },
+                    
                     {
                         name: 'Copy Questions',
                         value: 'copyQuestions',
@@ -193,7 +191,7 @@ export class TallySo implements INodeType {
                 required: true,
                 description: 'The form to list questions for',
             },
-            // Common: Form for write ops
+            // Common: Form for write ops (Rollback has a dedicated Form field below)
             {
                 displayName: 'Form',
                 name: 'formId',
@@ -204,7 +202,7 @@ export class TallySo implements INodeType {
                 displayOptions: {
                     show: {
                         resource: ['form'],
-                        operation: ['addField','updateField','deleteField','syncSelectOptions','rollbackForm'],
+                        operation: ['addField','updateField','deleteField'],
                     },
                 },
                 default: '',
@@ -227,51 +225,25 @@ export class TallySo implements INodeType {
                     { name: 'Dropdown', value: 'select' },
                     { name: 'Multiple Choice', value: 'radio' },
                     { name: 'Checkboxes', value: 'checkboxes' },
+                    { name: 'Multi-select', value: 'multi_select' },
                     { name: 'Date', value: 'date' },
                     { name: 'Time', value: 'time' },
                     { name: 'Rating', value: 'rating' },
                     { name: 'File Upload', value: 'file_upload' },
-                    { name: 'Yes/No', value: 'yes_no' },
                     { name: 'Custom…', value: 'custom' },
                 ],
                 default: 'input',
                 description: 'Choose a Tally field type or select Custom to enter a raw type',
             },
+            // Options JSON for option-based fields
             {
-                displayName: 'Template From Existing Field',
-                name: 'useTemplate',
-                type: 'boolean',
-                default: false,
-                description: 'Clone schema from an existing field to ensure a valid payload shape',
-                displayOptions: { show: { resource: ['form'], operation: ['addField'] } },
-            },
-            {
-                displayName: 'Template Select By',
-                name: 'templateSelectBy',
-                type: 'options',
-                options: [
-                    { name: 'UUID', value: 'uuid' },
-                    { name: 'Label', value: 'label' },
-                ],
-                default: 'uuid',
-                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true] } },
-            },
-            {
-                displayName: 'Template Field',
-                name: 'templateFieldUuid',
-                type: 'options',
-                typeOptions: { loadOptionsMethod: 'getQuestions' },
-                default: '',
-                description: 'Existing field to clone (by UUID)',
-                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true], templateSelectBy: ['uuid'] } },
-            },
-            {
-                displayName: 'Template Field Label',
-                name: 'templateFieldLabel',
-                type: 'string',
-                default: '',
-                description: 'Exact label of the field to clone',
-                displayOptions: { show: { resource: ['form'], operation: ['addField'], useTemplate: [true], templateSelectBy: ['label'] } },
+                displayName: 'Options (JSON)',
+                name: 'optionsJson',
+                type: 'json',
+                default: '[]',
+                description: "Provide a JSON array of option labels, e.g. ['Option 1','Option 2','Etc...']",
+                placeholder: "['Option 1','Option 2']",
+                displayOptions: { show: { resource: ['form'], operation: ['addField'], fieldType: ['radio','checkboxes','select','multi_select'] } },
             },
             {
                 displayName: 'Custom Field Type',
@@ -308,6 +280,20 @@ export class TallySo implements INodeType {
                 required: true,
             },
             {
+                displayName: 'Placeholder',
+                name: 'placeholder',
+                type: 'string',
+                displayOptions: {
+                    show: {
+                        resource: ['form'],
+                        operation: ['addField'],
+                        fieldType: ['input','textarea','email','url','phone','number','date','time'],
+                    },
+                },
+                default: '',
+                description: 'Placeholder shown inside the field (where supported by Tally)',
+            },
+            {
                 displayName: 'Payload (JSON)',
                 name: 'payload',
                 type: 'json',
@@ -315,6 +301,7 @@ export class TallySo implements INodeType {
                     show: {
                         resource: ['form'],
                         operation: ['addField'],
+                        fieldType: ['input','textarea','email','url','phone','number','date','time','rating','file_upload','custom'],
                     },
                 },
                 default: '{}',
@@ -361,7 +348,7 @@ export class TallySo implements INodeType {
                 displayOptions: { show: { resource: ['form'], operation: ['addField'], positionMode: ['before','after'] } },
                 default: '',
             },
-            // Update/Delete/Sync: target selector
+            // Update/Delete: target selector
             {
                 displayName: 'Select By',
                 name: 'targetSelectBy',
@@ -371,20 +358,20 @@ export class TallySo implements INodeType {
                     { name: 'Label', value: 'label' },
                 ],
                 default: 'uuid',
-                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField','syncSelectOptions'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField'] } },
             },
             {
                 displayName: 'Field UUID',
                 name: 'targetFieldUuid',
                 type: 'string',
-                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField','syncSelectOptions'], targetSelectBy: ['uuid'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField'], targetSelectBy: ['uuid'] } },
                 default: '',
             },
             {
                 displayName: 'Field Label',
                 name: 'targetFieldLabel',
                 type: 'string',
-                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField','syncSelectOptions'], targetSelectBy: ['label'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['updateField','deleteField'], targetSelectBy: ['label'] } },
                 default: '',
                 description: 'Exact label match (resolved via questions endpoint)'
             },
@@ -424,15 +411,6 @@ export class TallySo implements INodeType {
                 default: [],
                 displayOptions: { show: { resource: ['form'], operation: ['deleteField'], targetSelectBy: ['label'] } },
             },
-            // Sync Select Options inputs
-            {
-                displayName: 'Preserve Extras',
-                name: 'preserveExtras',
-                type: 'boolean',
-                default: false,
-                description: 'If enabled, keep existing options not present in input; otherwise replace all',
-                displayOptions: { show: { resource: ['form'], operation: ['syncSelectOptions'] } },
-            },
             // Copy Questions inputs
             {
                 displayName: 'Source Form',
@@ -453,13 +431,31 @@ export class TallySo implements INodeType {
                 required: true,
             },
             {
+                displayName: 'Show Advanced (UUID input)',
+                name: 'showLegacyUuidInput',
+                type: 'boolean',
+                displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'] } },
+                default: false,
+                description: 'Show the legacy "Question UUIDs to Copy" field. Prefer selecting Source Questions instead.',
+            },
+            {
                 displayName: 'Question UUIDs to Copy',
                 name: 'questionIds',
                 type: 'string',
                 typeOptions: { multipleValues: true, multipleValueButtonText: 'Add UUID' },
+                displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'], showLegacyUuidInput: [true] } },
+                default: [],
+                required: false,
+                description: 'Optional legacy input. If provided, each block UUID will be resolved to its groupUuid and the entire question group will be copied.',
+            },
+            {
+                displayName: 'Source Questions',
+                name: 'sourceQuestionGroups',
+                type: 'multiOptions',
+                typeOptions: { loadOptionsMethod: 'getSourceQuestions' },
                 displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'] } },
                 default: [],
-                required: true,
+                description: 'Select questions from the source form. Each option maps to a groupUuid so all associated blocks (like options) are copied.',
             },
             {
                 displayName: 'Insert Position Mode',
@@ -473,6 +469,22 @@ export class TallySo implements INodeType {
                 ],
                 default: 'end',
                 displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'] } },
+            },
+            {
+                displayName: 'Copy All From Source',
+                name: 'copyAll',
+                type: 'boolean',
+                default: false,
+                description: 'Copy all question groups from the Source Form',
+                displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'] } },
+            },
+            {
+                displayName: 'Replace Destination Contents',
+                name: 'replaceContents',
+                type: 'boolean',
+                default: false,
+                description: 'DANGER: When Copy All is enabled, this will first delete ALL blocks in the Destination form, then insert the Source form content. Use Dry-Run to preview and keep Backup enabled to allow rollback.',
+                displayOptions: { show: { resource: ['form'], operation: ['copyQuestions'], copyAll: [true] } },
             },
             {
                 displayName: 'Insert Index',
@@ -504,7 +516,7 @@ export class TallySo implements INodeType {
                 name: 'backupFormJson',
                 type: 'json',
                 default: '{}',
-                description: 'Full form JSON previously output as backup',
+                description: 'Full form JSON previously output as backup. Leave empty to use incoming item: $json.backup || $json.form || $json',
                 displayOptions: { show: { resource: ['form'], operation: ['rollbackForm'] } },
             },
             // Safety flags for write ops
@@ -514,7 +526,7 @@ export class TallySo implements INodeType {
                 type: 'boolean',
                 default: false,
                 description: 'If enabled, do not PATCH. Output proposed blocks and a diff only.',
-                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','syncSelectOptions','copyQuestions','rollbackForm'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','copyQuestions','rollbackForm'] } },
             },
             {
                 displayName: 'Backup Previous Form',
@@ -522,7 +534,7 @@ export class TallySo implements INodeType {
                 type: 'boolean',
                 default: true,
                 description: 'Include the pre-patch form JSON in output to enable rollback later.',
-                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','syncSelectOptions','copyQuestions'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','copyQuestions'] } },
             },
             {
                 displayName: 'Optimistic Concurrency',
@@ -530,7 +542,7 @@ export class TallySo implements INodeType {
                 type: 'boolean',
                 default: true,
                 description: 'Compare updatedAt before patch; abort if changed to prevent overwrites.',
-                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','syncSelectOptions','copyQuestions'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','copyQuestions'] } },
             },
             // Form ID for submission operations
             {
@@ -558,14 +570,15 @@ export class TallySo implements INodeType {
                 try {
                     const data = await tallyApiRequest.call(this, '/forms');
                     const forms = (data as any).items || data || [];
-                    return (forms as any[]).map((form: any) => ({
-                        name: form.name,
-                        value: form.id,
-                    }));
+                    return (forms as any[]).map((form: any) => ({ name: form.name, value: form.id }));
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     throw new NodeOperationError(this.getNode(), `Failed to load forms: ${message}`);
                 }
+            },
+            async getFormsWithCreateNew(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                const base = await (this as any).getForms();
+                return [{ name: '— Create New —', value: '__CREATE_NEW__', description: 'Create a new form from JSON' }, ...base];
             },
             async getQuestions(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
                 try {
@@ -580,6 +593,66 @@ export class TallySo implements INodeType {
                 } catch (error) {
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     throw new NodeOperationError(this.getNode(), `Failed to load questions: ${message}`);
+                }
+            },
+            async getSourceQuestions(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                // Populate dropdown by grouping form blocks by groupUuid; fallback to questions endpoint only to enrich labels
+                try {
+                    const sourceFormId = this.getCurrentNodeParameter('sourceFormId') as string;
+                    if (!sourceFormId) return [];
+                    const form = await apiGetForm.call(this, sourceFormId);
+
+                    const blocks: any[] = Array.isArray((form as any)?.blocks) ? (form as any).blocks : [];
+                    if (!blocks.length) return [];
+
+                    // Group blocks by groupUuid (or uuid if missing)
+                    const groups = new Map<string, any[]>();
+                    for (const b of blocks) {
+                        const key = b.groupUuid || b.uuid;
+                        if (!groups.has(key)) groups.set(key, []);
+                        groups.get(key)!.push(b);
+                    }
+
+                    const schemaToText = (schema: any): string => {
+                        const parts: string[] = [];
+                        const walk = (n: any) => {
+                            if (Array.isArray(n)) n.forEach(walk);
+                            else if (typeof n === 'string') parts.push(n);
+                        };
+                        walk(schema);
+                        return parts.join(' ').trim();
+                    };
+
+                    // Best-effort friendly name for each group
+                    const options: INodePropertyOptions[] = [];
+                    for (const [groupUuid, groupBlocks] of groups.entries()) {
+                        // Prefer a block with a user-visible label (inputs)
+                        const labelBlock = groupBlocks.find((gb) => typeof gb.label === 'string' && gb.label.trim().length > 0 && /^INPUT_|^TEXTAREA|^RATING|^FILE_UPLOAD/.test(gb.type || ''))
+                            || groupBlocks.find((gb) => typeof gb.label === 'string' && gb.label.trim().length > 0);
+                        const type = groupBlocks[0]?.groupType || groupBlocks[0]?.type || 'QUESTION';
+                        const count = groupBlocks.length;
+                        // Try title from immediately preceding TITLE (groupType=QUESTION)
+                        let name: string | undefined;
+                        // Find first occurrence index of any block in this group
+                        const firstIdx = blocks.findIndex((b) => (b.groupUuid || b.uuid) === groupUuid);
+                        if (firstIdx > 0) {
+                            const prev = blocks[firstIdx - 1];
+                            if (prev?.type === 'TITLE' && prev?.groupType === 'QUESTION') {
+                                const text = schemaToText(prev?.payload?.safeHTMLSchema);
+                                if (text) name = text;
+                            }
+                        }
+                        if (!name && labelBlock?.label) name = String(labelBlock.label);
+                        if (!name) name = `${type} (${count} block${count === 1 ? '' : 's'})`;
+                        options.push({ name, value: groupUuid, description: `Type: ${type}` });
+                    }
+
+                    // Sort by name for nicer UX
+                    options.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+                    return options;
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    throw new NodeOperationError(this.getNode(), `Failed to load source questions: ${message}`);
                 }
             },
         },
@@ -603,13 +676,6 @@ export class TallySo implements INodeType {
                                 pairedItem: { item: i },
                             });
                         }
-                    } else if (operation === 'get') {
-                        const formId = this.getNodeParameter('formId', i) as string;
-                        const data = await tallyApiRequest.call(this, `/forms/${formId}`);
-                        returnData.push({
-                            json: data as any,
-                            pairedItem: { item: i },
-                        });
                     } else if (operation === 'listQuestions') {
                         const formId = this.getNodeParameter('formId', i) as string;
                         const questions = await apiListQuestions.call(this, formId);
@@ -621,23 +687,23 @@ export class TallySo implements INodeType {
                         }
                     } else if (operation === 'addField') {
                         const formId = this.getNodeParameter('formId', i) as string;
-            const selectedType = this.getNodeParameter('fieldType', i) as string;
-            const toTallyType = (t: string): string => {
+                        const selectedType = this.getNodeParameter('fieldType', i) as string;
+                        const toTallyType = (t: string): string => {
                             switch (t) {
-                case 'input': return 'INPUT_TEXT';
-                case 'textarea': return 'TEXTAREA';
-                case 'email': return 'INPUT_EMAIL';
-                case 'url': return 'INPUT_URL';
-                case 'phone': return 'INPUT_PHONE';
-                case 'number': return 'NUMBER';
+                                case 'input': return 'INPUT_TEXT';
+                                case 'textarea': return 'TEXTAREA';
+                                case 'email': return 'INPUT_EMAIL';
+                                case 'url': return 'INPUT_LINK';
+                                case 'phone': return 'INPUT_PHONE_NUMBER';
+                                case 'number': return 'INPUT_NUMBER';
                                 case 'select': return 'SELECT';
                                 case 'radio': return 'RADIO';
                                 case 'checkboxes': return 'CHECKBOXES';
-                                case 'date': return 'DATE';
-                                case 'time': return 'TIME';
+                                case 'multi_select': return 'MULTI_SELECT';
+                                case 'date': return 'INPUT_DATE';
+                                case 'time': return 'INPUT_TIME';
                                 case 'rating': return 'RATING';
                                 case 'file_upload': return 'FILE_UPLOAD';
-                                case 'yes_no': return 'YES_NO';
                                 default: return (t || '').toUpperCase();
                             }
                         };
@@ -647,6 +713,30 @@ export class TallySo implements INodeType {
                         const title = this.getNodeParameter('title', i, '') as string;
                         const label = this.getNodeParameter('label', i) as string;
                         let payload = this.getNodeParameter('payload', i, {}) as Record<string, any>;
+                        // Placeholder support + fallback to Label when Placeholder is empty
+                        const supportsPlaceholderTypes = ['INPUT_TEXT','TEXTAREA','INPUT_EMAIL','INPUT_LINK','INPUT_PHONE_NUMBER','INPUT_NUMBER','INPUT_DATE','INPUT_TIME'];
+                        const supportsPlaceholder = supportsPlaceholderTypes.includes(type);
+                        const placeholderInput = supportsPlaceholder ? (this.getNodeParameter('placeholder', i, '') as string) : '';
+                        const placeholderFinal = supportsPlaceholder ? (placeholderInput?.trim() || label || '') : '';
+                        const isRequired = this.getNodeParameter('required', i, false) as boolean;
+                        const positionMode = this.getNodeParameter('positionMode', i, 'end') as string;
+                        const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
+                        const backup = this.getNodeParameter('backup', i, true) as boolean;
+                        const optimistic = this.getNodeParameter('optimistic', i, true) as boolean;
+                        const isOptionField = ['SELECT','RADIO','CHECKBOXES','MULTI_SELECT'].includes(type);
+                        // Parse Options (JSON) for option-based fields
+                        let optionsFromUi: string[] = [];
+                        if (isOptionField) {
+                            const optionsParam = this.getNodeParameter('optionsJson', i, '[]') as any;
+                            try {
+                                const parsed = typeof optionsParam === 'string' ? JSON.parse(optionsParam) : optionsParam;
+                                if (Array.isArray(parsed)) {
+                                    optionsFromUi = parsed.map((v) => String(v)).map((s) => s.trim()).filter((s) => s.length > 0);
+                                }
+                            } catch {
+                                // ignore, will validate below
+                            }
+                        }
                         // Handle case where payload might be malformed from JSON field
                         if (typeof payload === 'string') {
                             try {
@@ -658,89 +748,81 @@ export class TallySo implements INodeType {
                         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
                             payload = {};
                         }
-                        const isRequired = this.getNodeParameter('required', i, false) as boolean;
-                        const useTemplate = this.getNodeParameter('useTemplate', i, false) as boolean;
-                        const templateSelectBy = this.getNodeParameter('templateSelectBy', i, 'uuid') as string;
-                        const positionMode = this.getNodeParameter('positionMode', i, 'end') as string;
-                        const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
-                        const backup = this.getNodeParameter('backup', i, true) as boolean;
-                        const optimistic = this.getNodeParameter('optimistic', i, true) as boolean;
 
                         const before = await apiGetForm.call(this, formId);
                         const blocks = cloneBlocks(before.blocks || []);
-
-                        let block: any;
-                        if (useTemplate) {
-                            // Resolve template UUID
-                            let templateUuid = '';
-                            if (templateSelectBy === 'uuid') {
-                                templateUuid = (this.getNodeParameter('templateFieldUuid', i, '') as string) || '';
-                            } else {
-                                const templateLabel = (this.getNodeParameter('templateFieldLabel', i, '') as string) || '';
-                                const questions = await apiListQuestions.call(this, formId);
-                                const { blockUuid } = findBlockByLabel(questions as any[], templateLabel);
-                                if (!blockUuid) throw new NodeOperationError(this.getNode(), `Template field with label "${templateLabel}" not found`);
-                                templateUuid = blockUuid;
+                        // Build new blocks
+                        const blocksToInsert: any[] = [];
+                        // Add title block if provided
+                        if (title && title.trim()) {
+                            blocksToInsert.push(newTitleBlock(title.trim()));
+                        }
+                        if (isOptionField) {
+                            // Validate options list
+                            if (!optionsFromUi.length) {
+                                throw new NodeOperationError(this.getNode(), 'Options (JSON) is required for this field type and must be a non-empty array of strings.');
                             }
-                            const { block: templateBlock } = findBlockByUuid(blocks as any, templateUuid);
-                            if (!templateBlock) throw new NodeOperationError(this.getNode(), `Template field with UUID ${templateUuid} not found`);
-                            const cloned = stripOrRegenUuid(templateBlock as any, true) as any;
-                            // Use template type; overlay label and payload
-                            const basePayload = (cloned.payload ? { ...cloned.payload } : {});
-                            const mergedPayload = { ...basePayload, ...(payload || {}) } as Record<string, any>;
-                            if (isRequired) mergedPayload.isRequired = true;
-                            // Clean up any legacy key
-                            if ('required' in mergedPayload) delete (mergedPayload as any).required;
-                            block = { ...cloned, label, payload: mergedPayload };
+                            const groupUuid = generateUuid();
+                            const groupTypeMap: Record<string, string> = {
+                                SELECT: 'DROPDOWN',
+                                RADIO: 'MULTIPLE_CHOICE',
+                                CHECKBOXES: 'CHECKBOXES',
+                                MULTI_SELECT: 'MULTI_SELECT',
+                            };
+                            const optionTypeMap: Record<string, string> = {
+                                SELECT: 'DROPDOWN_OPTION',
+                                RADIO: 'MULTIPLE_CHOICE_OPTION',
+                                CHECKBOXES: 'CHECKBOX',
+                                MULTI_SELECT: 'MULTI_SELECT_OPTION',
+                            };
+                            const groupType = groupTypeMap[type];
+                            const optionType = optionTypeMap[type];
+                            optionsFromUi.forEach((optLabel, idx) => {
+                                const block = {
+                                    uuid: generateUuid(),
+                                    type: optionType,
+                                    label: optLabel,
+                                    groupUuid,
+                                    groupType,
+                                    payload: {
+                                        index: idx,
+                                        isRequired: !!isRequired,
+                                        isFirst: idx === 0,
+                                        isLast: idx === optionsFromUi.length - 1,
+                                        text: optLabel,
+                                    },
+                                } as any;
+                                blocksToInsert.push(block);
+                            });
                         } else {
-                            // Default payloads by type to satisfy Tally's schema expectations
+                            // Non-option fields: build a single block with sensible defaults
                             const defaultPayloadFor = (t: string): Record<string, any> => {
                                 const req = { isRequired: !!isRequired } as Record<string, any>;
-                                switch (t) {
+                switch (t) {
                                     case 'INPUT_TEXT':
                                     case 'INPUT_EMAIL':
-                                    case 'INPUT_URL':
-                                    case 'INPUT_PHONE':
-                                        return { ...req, placeholder: '' };
+                                    case 'INPUT_LINK':
+                                    case 'INPUT_NUMBER':
+                                    case 'INPUT_DATE':
+                                    case 'INPUT_TIME':
+                                        return { ...req, placeholder: placeholderFinal };
                                     case 'TEXTAREA':
-                                        return { ...req, placeholder: '' };
-                                    case 'DATE':
-                                    case 'TIME':
+                                        return { ...req, placeholder: placeholderFinal };
+                                    case 'INPUT_PHONE_NUMBER':
+                                        return { ...req, internationalFormat: false, placeholder: placeholderFinal };
                                     case 'RATING':
                                     case 'FILE_UPLOAD':
-                                    case 'YES_NO':
                                         return req;
-                                    case 'SELECT':
-                                    case 'RADIO':
-                                    case 'CHECKBOXES':
-                                        return { ...req, options: Array.isArray((payload as any)?.options) ? (payload as any).options : [] };
                                     default:
                                         return req;
                                 }
                             };
-                            // Guard: option-based fields must have options when not templating
-                            if ((type === 'SELECT' || type === 'RADIO' || type === 'CHECKBOXES') && !Array.isArray((payload as any)?.options)) {
-                                throw new NodeOperationError(
-                                    this.getNode(),
-                                    'This field type requires options. Provide payload.options (array) or use Template/Sync Select Options.'
-                                );
-                            }
                             const mergedPayload = { ...defaultPayloadFor(type), ...(payload || {}) };
-                            block = newBlockTemplate(type, label, mergedPayload as any);
+                            const fieldBlock = newBlockTemplate(type, label, mergedPayload as any);
+                            blocksToInsert.push(fieldBlock);
                         }
 
                         let nextBlocks = blocks;
-                        
-                        // Create blocks to insert - title block first if provided, then the field block
-                        const blocksToInsert: any[] = [];
-                        
-                        // Add title block if title is provided
-                        if (title && title.trim()) {
-                            blocksToInsert.push(newTitleBlock(title.trim()));
-                        }
-                        
-                        // Add the main field block
-                        blocksToInsert.push(block);
                         
                         // Insert blocks at the specified position
                         if (positionMode === 'end') {
@@ -780,15 +862,13 @@ export class TallySo implements INodeType {
                             }
                         }
 
+                        // Commit
                         const resp = await apiUpdateForm.call(this, formId, {
                             blocks: nextBlocks,
                             name: before.name,
                             settings: before.settings,
                         });
-                        returnData.push({
-                            json: { updated: true, form: resp, backup: backup ? before : undefined },
-                            pairedItem: { item: i },
-                        });
+                        returnData.push({ json: { updated: true, form: resp, backup: backup ? before : undefined }, pairedItem: { item: i } });
                     } else if (operation === 'updateField') {
                         const formId = this.getNodeParameter('formId', i) as string;
                         const targetSelectBy = this.getNodeParameter('targetSelectBy', i) as string;
@@ -796,15 +876,24 @@ export class TallySo implements INodeType {
                         const backup = this.getNodeParameter('backup', i, true) as boolean;
                         const optimistic = this.getNodeParameter('optimistic', i, true) as boolean;
                         const mergeStrategy = this.getNodeParameter('mergeStrategy', i, 'merge') as string;
-                        const payloadPatch = this.getNodeParameter('payloadPatch', i, {}) as Record<string, any>;
+                        const payloadPatchParam = this.getNodeParameter('payloadPatch', i, {}) as any;
+
+                        // Normalize payloadPatch in case it comes as a JSON string
+                        let payloadPatch: Record<string, any> = {};
+                        if (typeof payloadPatchParam === 'string') {
+                            try { payloadPatch = JSON.parse(payloadPatchParam); } catch { payloadPatch = {}; }
+                        } else if (payloadPatchParam && typeof payloadPatchParam === 'object' && !Array.isArray(payloadPatchParam)) {
+                            payloadPatch = payloadPatchParam as Record<string, any>;
+                        }
 
                         const before = await apiGetForm.call(this, formId);
-                        const questions = await apiListQuestions.call(this, formId);
                         const blocks = cloneBlocks(before.blocks || []);
+                        const questions = await apiListQuestions.call(this, formId);
 
+                        // Resolve target UUID
                         let targetUuid = '';
                         if (targetSelectBy === 'uuid') {
-                            targetUuid = (this.getNodeParameter('targetFieldUuid', i) as string) || '';
+                            targetUuid = (this.getNodeParameter('targetFieldUuid', i, '') as string) || '';
                         } else {
                             const label = (this.getNodeParameter('targetFieldLabel', i) as string) || '';
                             const { blockUuid } = findBlockByLabel(questions as any[], label);
@@ -882,53 +971,13 @@ export class TallySo implements INodeType {
 
                         const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: before.name, settings: before.settings });
                         returnData.push({ json: { updated: true, form: resp, backup: backup ? before : undefined }, pairedItem: { item: i } });
-                    } else if (operation === 'syncSelectOptions') {
-                        const formId = this.getNodeParameter('formId', i) as string;
-                        const targetSelectBy = this.getNodeParameter('targetSelectBy', i) as string;
-                        const preserve = this.getNodeParameter('preserveExtras', i, false) as boolean;
-                        const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
-                        const backup = this.getNodeParameter('backup', i, true) as boolean;
-                        const optimistic = this.getNodeParameter('optimistic', i, true) as boolean;
-
-                        const before = await apiGetForm.call(this, formId);
-                        const questions = await apiListQuestions.call(this, formId);
-                        const blocks = cloneBlocks(before.blocks || []);
-
-                        let targetUuid = '';
-                        if (targetSelectBy === 'uuid') targetUuid = (this.getNodeParameter('targetFieldUuid', i) as string) || '';
-                        else {
-                            const label = (this.getNodeParameter('targetFieldLabel', i) as string) || '';
-                            const { blockUuid } = findBlockByLabel(questions as any[], label);
-                            if (!blockUuid) throw new NodeOperationError(this.getNode(), `Field with label "${label}" not found`);
-                            targetUuid = blockUuid;
-                        }
-
-                        const { index, block } = findBlockByUuid(blocks as any, targetUuid);
-                        if (index < 0 || !block) throw new NodeOperationError(this.getNode(), `Field with UUID ${targetUuid} not found`);
-
-                        const options = (items || []).map(({ json }) => ({
-                            label: (json as any).label,
-                            value: (json as any).value,
-                        }));
-                        const nextBlock = updateSelectOptions(block as any, options as any, preserve);
-                        const nextBlocks = replaceBlock(blocks as any, targetUuid, nextBlock);
-
-                        if (dryRun) {
-                            returnData.push({ json: { preview: true, formId, proposedBlocks: nextBlocks, diff: diffBlocks(before.blocks || [], nextBlocks) }, pairedItem: { item: i } });
-                            continue;
-                        }
-
-                        if (optimistic) {
-                            const latest = await apiGetForm.call(this, formId);
-                            if (latest.updatedAt !== before.updatedAt) throw new NodeOperationError(this.getNode(), 'Form changed since read. Re-run to avoid conflicts.');
-                        }
-
-                        const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: before.name, settings: before.settings });
-                        returnData.push({ json: { updated: true, form: resp, backup: backup ? before : undefined }, pairedItem: { item: i } });
                     } else if (operation === 'copyQuestions') {
                         const sourceFormId = this.getNodeParameter('sourceFormId', i) as string;
                         const destFormId = this.getNodeParameter('destFormId', i) as string;
                         const qIds = (this.getNodeParameter('questionIds', i, []) as string[]) || [];
+                        const selectedGroupUuids = (this.getNodeParameter('sourceQuestionGroups', i, []) as string[]) || [];
+                        const copyAll = this.getNodeParameter('copyAll', i, false) as boolean;
+                        const replaceContents = this.getNodeParameter('replaceContents', i, false) as boolean;
                         const insertPositionMode = this.getNodeParameter('insertPositionMode', i, 'end') as string;
                         const insertIndex = this.getNodeParameter('insertIndex', i, 0) as number;
                         const insertRefUuid = this.getNodeParameter('insertRefUuid', i, '') as string;
@@ -938,9 +987,54 @@ export class TallySo implements INodeType {
 
                         const source = await apiGetForm.call(this, sourceFormId);
                         const destBefore = await apiGetForm.call(this, destFormId);
+                        // Determine groups to copy
+                        let groupUuids: string[] = [];
+                        if (copyAll) {
+                            // All groups found in source blocks
+                            const set = new Set<string>();
+                            for (const b of (source.blocks || []) as any[]) set.add(b.groupUuid || b.uuid);
+                            groupUuids = Array.from(set);
+                        } else {
+                            if (selectedGroupUuids?.length) {
+                                groupUuids = [...new Set(selectedGroupUuids)];
+                            } else if (qIds?.length) {
+                                groupUuids = qIds
+                                    .map((id) => resolveGroupUuidByBlockUuid((source.blocks || []) as any, id))
+                                    .filter((g): g is string => !!g);
+                                groupUuids = [...new Set(groupUuids)];
+                            }
+                            if (!groupUuids.length) {
+                                throw new NodeOperationError(this.getNode(), 'No questions selected. Choose Source Questions, provide UUIDs, or enable Copy All.');
+                            }
+                        }
 
-                        const sourceBlocks = (source.blocks || []).filter((b: any) => qIds.includes(b.uuid)).map((b: any) => stripOrRegenUuid(b, true));
+                        // For each group, clone all group blocks with a new groupUuid and include preceding TITLE (QUESTION) when available
+                        const allSourceBlocks: any[] = (source.blocks || []) as any[];
+                        const selectedGroupSet = new Set(groupUuids);
+                        const sourceBlocks = groupUuids.flatMap((g) => {
+                            const cloned = cloneGroupBlocks(allSourceBlocks as any, g);
+                            // Try to include the preceding TITLE/QUESTION block if it immediately precedes any block of the group
+                            const firstIdx = allSourceBlocks.findIndex((b) => (b.groupUuid || b.uuid) === g);
+                            if (firstIdx > 0) {
+                                const prev = allSourceBlocks[firstIdx - 1];
+                                if (prev?.type === 'TITLE' && prev?.groupType === 'QUESTION') {
+                                    // Only include the preceding TITLE if its own group is NOT already selected.
+                                    // This avoids duplicating TITLEs in Copy All, or when user explicitly selects the title group.
+                                    const titleGroupUuid = prev.groupUuid || prev.uuid;
+                                    if (!selectedGroupSet.has(titleGroupUuid)) {
+                                        // Clone the title too with fresh ids and its own groupUuid (keep separation from field group)
+                                        cloned.unshift(cloneBlockWithNewIds(prev, true));
+                                    }
+                                }
+                            }
+                            return cloned;
+                        });
                         let nextBlocks = cloneBlocks(destBefore.blocks || []);
+
+                        // Replace Destination contents if requested and copying all
+                        if (copyAll && replaceContents) {
+                            nextBlocks = [];
+                        }
 
                         if (insertPositionMode === 'end') {
                             for (const b of sourceBlocks) nextBlocks = insertBlock(nextBlocks, b);
@@ -973,22 +1067,47 @@ export class TallySo implements INodeType {
                     } else if (operation === 'rollbackForm') {
                         const formId = this.getNodeParameter('rollbackFormId', i) as string;
                         const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
-                        const backupFormJson = this.getNodeParameter('backupFormJson', i, {}) as any;
+                        const backupFormJsonParam = this.getNodeParameter('backupFormJson', i, {}) as any;
 
-                        if (!backupFormJson || !backupFormJson.blocks) {
-                            throw new NodeOperationError(this.getNode(), 'backupFormJson must include full form JSON with blocks');
+                        // Normalize param (string->object) and fall back to incoming item
+                        let parsedParam: any = backupFormJsonParam;
+                        if (typeof parsedParam === 'string') {
+                            try { parsedParam = JSON.parse(parsedParam); } catch { parsedParam = {}; }
+                        }
+                        const incoming = (items[i]?.json || {}) as any;
+                        const candidate = parsedParam && Object.keys(parsedParam).length ? parsedParam
+                            : (incoming?.backup && typeof incoming.backup === 'object') ? incoming.backup
+                            : (incoming?.form && typeof incoming.form === 'object') ? incoming.form
+                            : incoming;
+
+                        if (!candidate || !Array.isArray(candidate.blocks)) {
+                            throw new NodeOperationError(this.getNode(), 'No valid form JSON found. Provide Backup Form JSON or pass it from previous node ($json.backup, $json.form, or $json).');
                         }
 
-                        const before = await apiGetForm.call(this, formId);
-                        const nextBlocks = backupFormJson.blocks as any[];
+                        const nextBlocks = candidate.blocks as any[];
 
-                        if (dryRun) {
-                            returnData.push({ json: { preview: true, formId, proposedBlocks: nextBlocks, diff: diffBlocks(before.blocks || [], nextBlocks) }, pairedItem: { item: i } });
-                            continue;
+                        // Create New path
+                        if (formId === '__CREATE_NEW__') {
+                            if (dryRun) {
+                                returnData.push({ json: { preview: true, createNew: true, proposedBlocks: nextBlocks, name: candidate.name, settings: candidate.settings }, pairedItem: { item: i } });
+                                continue;
+                            }
+                            const body: any = {
+                                name: candidate.name || 'Untitled Form',
+                                settings: candidate.settings || {},
+                                blocks: nextBlocks,
+                            };
+                            const resp = await apiCreateForm.call(this, body);
+                            returnData.push({ json: { created: true, form: resp }, pairedItem: { item: i } });
+                        } else {
+                            const before = await apiGetForm.call(this, formId);
+                            if (dryRun) {
+                                returnData.push({ json: { preview: true, formId, proposedBlocks: nextBlocks, diff: diffBlocks(before.blocks || [], nextBlocks) }, pairedItem: { item: i } });
+                                continue;
+                            }
+                            const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: candidate.name ?? before.name, settings: candidate.settings ?? before.settings });
+                            returnData.push({ json: { updated: true, form: resp }, pairedItem: { item: i } });
                         }
-
-                        const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: backupFormJson.name ?? before.name, settings: backupFormJson.settings ?? before.settings });
-                        returnData.push({ json: { updated: true, form: resp }, pairedItem: { item: i } });
                     }
                 } else if (resource === 'submission') {
                     const formId = this.getNodeParameter('formId', i) as string;

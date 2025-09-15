@@ -87,6 +87,30 @@ export function removeBlocks(blocks: TallyBlock[], uuids: string[]): TallyBlock[
   return blocks.filter((b) => !set.has(b.uuid));
 }
 
+/**
+ * Replace all blocks belonging to a given groupUuid with the provided replacement blocks.
+ * Inserts the replacement at the position of the first encountered block of the group.
+ */
+export function replaceGroupBlocks(blocks: TallyBlock[], groupUuid: string, replacement: TallyBlock[]): TallyBlock[] {
+  const out: TallyBlock[] = [];
+  let replaced = false;
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const grp = b.groupUuid || b.uuid;
+    if (grp === groupUuid) {
+      if (!replaced) {
+        out.push(...replacement.map((rb) => ({ ...rb })));
+        replaced = true;
+      }
+      // Skip all blocks belonging to this group
+      continue;
+    }
+    out.push({ ...b });
+  }
+  // If group not found, no change is made; caller should validate existence.
+  return out;
+}
+
 export function ensureUniqueUuids(blocks: TallyBlock[]): TallyBlock[] {
   const seen = new Set<string>();
   return blocks.map((b) => {
@@ -105,7 +129,7 @@ export function newBlockTemplate(type: string, label: string, payload?: IDataObj
   let defaultPayload = payload || {};
   
   // Add required fields for input types that need them
-  if (['INPUT_TEXT', 'INPUT_EMAIL', 'TEXTAREA', 'INPUT_PHONE', 'INPUT_URL'].includes(type)) {
+  if (['INPUT_TEXT', 'INPUT_EMAIL', 'TEXTAREA', 'INPUT_PHONE_NUMBER', 'INPUT_LINK', 'INPUT_NUMBER', 'INPUT_DATE', 'INPUT_TIME'].includes(type)) {
     defaultPayload = {
       isRequired: false,
       placeholder: '',
@@ -171,4 +195,35 @@ export function stripOrRegenUuid(block: TallyBlock, regen = true): TallyBlock {
 export function findBlockByLabel(questions: any[], label: string): { blockUuid?: string; question?: any } {
   const q = questions.find((q) => (q.label || q.title || '').trim() === label.trim());
   return { blockUuid: q?.blockUuid || q?.id || q?.uuid, question: q };
+}
+
+/**
+ * Clone a set of blocks that belong to the same groupUuid, regenerating a fresh
+ * groupUuid for the whole set and new uuids for each block. Preserves order.
+ */
+export function cloneGroupBlocks(allBlocks: TallyBlock[], groupUuid: string): TallyBlock[] {
+  const groupBlocks = allBlocks.filter((b) => b.groupUuid === groupUuid);
+  if (groupBlocks.length === 0) return [];
+  const newGroupUuid = generateUuid();
+  return groupBlocks.map((b) => ({
+    ...JSON.parse(JSON.stringify(b)),
+    uuid: generateUuid(),
+    groupUuid: newGroupUuid,
+  }));
+}
+
+/**
+ * Given a block UUID, find its groupUuid (if any) by scanning blocks.
+ */
+export function resolveGroupUuidByBlockUuid(blocks: TallyBlock[], uuid: string): string | undefined {
+  const { block } = findBlockByUuid(blocks, uuid);
+  return block?.groupUuid;
+}
+
+/** Clone a single block, regenerating uuid and optionally groupUuid */
+export function cloneBlockWithNewIds(block: TallyBlock, regenGroup = false): TallyBlock {
+  const next = JSON.parse(JSON.stringify(block)) as TallyBlock;
+  next.uuid = generateUuid();
+  if (regenGroup) next.groupUuid = generateUuid();
+  return next;
 }

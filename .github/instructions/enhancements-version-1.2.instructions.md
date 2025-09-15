@@ -62,9 +62,12 @@ applyTo: '**'
 
 ### B) **Add Field**
 
-* **Inputs**: `formId`, `type`, `label`, `position` (index or before/after existing field), optional `payload` (type-specific).
-* **Flow**: GET form → create new block (generate UUID) → splice into `blocks` → PATCH full form.
-* **Output**: updated form (or the new block) + backup of prior form JSON.
+* **Inputs**: `formId`, `type`, `label`, `placeholder?` (for input types), `optionsJson?` (for option-based types), `position` (end/index/before/after), optional `payload` (type-specific; disabled for option types).
+* **Flow**: GET form → create block(s) → splice into `blocks` → PATCH full form.
+* **Notes**:
+  * For option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select), the node creates one block per option from `optionsJson`; `payload` is hidden/ignored for these types.
+  * For input types (TEXT/EMAIL/LINK/PHONE/NUMBER/DATE/TIME/TEXTAREA), `placeholder` is merged into payload; if empty, the node falls back to `label` for placeholder.
+* **Output**: updated form (or the new block(s)) + backup of prior form JSON.
 
 ### C) **Update Field**
 
@@ -101,6 +104,12 @@ applyTo: '**'
 * [x] **Dry‑Run/Preview**: boolean. If true → output proposed `blocks` + a field‑level diff; skip PATCH.
 * [x] **Backup**: default ON. Output `previousForm` (full JSON) in `binary` or `json` for rollback.
 * [x] **Optimistic Concurrency**: when enabled, compare `updatedAt` from initial GET vs a fast GET before PATCH; abort if changed.
+
+Additional UX in v1.2
+
+* [x] Add Field: `Options (JSON)` input for option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select); the node generates one option block per item and hides `Payload (JSON)` to avoid confusion.
+* [x] Add Field: `Placeholder` input for input types (Short/Long Text, Email, URL, Phone, Number, Date, Time). If left empty, `label` is used as placeholder.
+* [x] Remove non-mapped UI types (e.g., Yes/No). Use Multiple Choice with two options or a single Checkbox instead.
 
 ---
 
@@ -213,7 +222,7 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 * [x] **Warnings**: UI copy present on all write ops; Dry‑Run + Backup flags available; Optimistic mode works.
 * [x] **Copy Questions**: copied fields appear in dest form; UUIDs are unique; position respected.
 * [x] **Docs**: README updated with examples and cautions.
-* [ ] **Lint**: `eslint-plugin-n8n-nodes-base` passes.
+* [x] **Lint**: `eslint-plugin-n8n-nodes-base` passes.
 
 ---
 
@@ -233,8 +242,8 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 
 * [ ] Install: `pnpm i`
 * [ ] Dev watch: `pnpm dev`
-* [ ] Build: `pnpm build`
-* [ ] Lint: `pnpm lint`
+* [x] Build: `pnpm build`
+* [x] Lint: `pnpm lint`
 * [ ] Node engine: **>= 20.19**
 
 *(If migrating to `@n8n/node-cli`, ensure parity: build, watch, publish workflows; but not required for these features.)*
@@ -281,3 +290,33 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 * Support for grouped blocks / conditional logic cloning.
 * Webhook trigger convenience wrapper for submissions.
 * Auto‑paginate submissions and questions when Tally adds pagination.
+
+---
+
+## Agent Progress Notes — 2025‑09‑14
+
+Context: Work is happening on branch `feat/tally-field-ops`. Build and lint pass via `@n8n/node-cli` (pnpm). Major features in this iteration are implemented and verified locally.
+
+What’s implemented
+- New form operations: List Questions, Add Field, Update Field, Delete Field, Sync Select Options, Copy Questions, and Rollback Form.
+- Safety pattern: always GET → clone/mutate → PATCH full `blocks`; supports Dry‑Run preview, automatic Backup output, and Optimistic Concurrency (compares `updatedAt`).
+- Title support: providing a Title creates a separate `TITLE` block before the field; `groupType` for TITLE is `QUESTION`.
+- Type mapping and payloads: input types use `INPUT_*` variants (TEXT/EMAIL/LINK/PHONE/NUMBER/DATE/TIME/TEXTAREA) with `payload.isRequired` and `placeholder` support; placeholder falls back to the Label when not set.
+- Option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select) are created via `Options (JSON)` as per-option blocks (correct type/groupType); `Payload (JSON)` is hidden for these types to avoid confusion.
+- URL mapping: `URL` uses `INPUT_LINK`. No fallback logic required.
+- Removed the "Template from existing field" UI and logic.
+- Removed non-mapped Yes/No type from the UI.
+
+Known quirks and tips
+- Tally requires both `uuid` and a distinct `groupUuid` per block; `groupType` usually matches `type` except for `TITLE` which uses `QUESTION`.
+- PATCH replaces the entire `blocks` array; never send partial arrays. Always include existing `settings` and `name` fields when patching.
+- Option-based fields are modeled as per-option blocks with a shared `groupUuid` and the correct `groupType`.
+
+Verification checklist
+- Build: `pnpm build` → PASS; Lint: `pnpm lint` → PASS.
+- Dry‑Run shows a `diffBlocks` summary and proposedBlocks; turning Dry‑Run off commits via PATCH.
+- After any write op with Optimistic Concurrency ON, the node aborts if `updatedAt` changed.
+
+Next small steps
+- Broader field type smoke tests (PHONE, NUMBER, DATE/TIME, RATING, FILE_UPLOAD) to catch schema edge cases.
+- Add more README examples for Update/Delete and Copy Questions.
