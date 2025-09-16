@@ -19,10 +19,10 @@ applyTo: '**'
 
 **Goals**:
 
-* [ ] Add safe, high-level field operations that *abstract away* raw JSON editing.
-* [ ] Enable Airtable → Tally **select options sync**.
-* [ ] Enable **copying questions** (fields) from Form A → Form B.
-* [ ] Keep users safe from form data loss when using Tally **PATCH /forms/{formId}**.
+* [x] Add safe, high-level field operations that *abstract away* raw JSON editing.
+* [x] Enable Airtable → Tally **select options sync**.
+* [x] Enable **copying questions** (fields) from Form A → Form B.
+* [x] Keep users safe from form data loss when using Tally **PATCH /forms/{formId}**.
 
 **Key constraint**: Tally **PATCH** overwrites the target fields in `blocks`. Our node must always **fetch → modify → patch full `blocks`** to avoid destructive updates.
 
@@ -32,21 +32,21 @@ applyTo: '**'
 
 * **Safety first**
 
-  * [ ] Always **GET full form** before any mutation.
-  * [ ] Mutate an **in-memory clone** of `blocks` and **PATCH** the **full, merged** array.
-  * [ ] Provide **Dry‑Run/Preview**, **Automatic Backup (pre‑patch JSON)**, and **Optimistic Concurrency** (compare `updatedAt`).
+  * [x] Always **GET full form** before any mutation.
+  * [x] Mutate an **in-memory clone** of `blocks` and **PATCH** the **full, merged** array.
+  * [x] Provide **Dry‑Run/Preview**, **Automatic Backup (pre‑patch JSON)**, and **Optimistic Concurrency** (compare `updatedAt`).
 * **Ergonomic UX**
 
-  * [ ] Task-level operations: *Add Field*, *Update Field*, *Delete Field*, *Sync Select Options*, *List Questions*, *Copy Questions*.
-  * [ ] Let users pick field **by UUID** or **by label** (resolve labels via Questions endpoint).
+  * [x] Task-level operations: *Add Field*, *Update Field*, *Delete Field*, *Sync Select Options*, *List Questions*, *Copy Questions*.
+  * [x] Let users pick field **by UUID** or **by label** (resolve labels via Questions endpoint).
 * **Minimal surface area**
 
-  * [ ] Extend existing helper (`makeTallyRequest.ts`) to support `PATCH`.
-  * [ ] Keep Tally block shape **loosely typed**; don’t block unknown fields.
+  * [x] Extend existing helper (`makeTallyRequest.ts`) to support `PATCH`.
+  * [x] Keep Tally block shape **loosely typed**; don’t block unknown fields.
 * **Recoverability**
 
-  * [ ] Output **pre‑patch form JSON** for rollback.
-  * [ ] Add a simple *Rollback Form* operation (optional, low effort).
+  * [x] Output **pre‑patch form JSON** for rollback.
+  * [x] Add a simple *Rollback Form* operation (optional, low effort).
 
 ---
 
@@ -62,9 +62,12 @@ applyTo: '**'
 
 ### B) **Add Field**
 
-* **Inputs**: `formId`, `type`, `label`, `position` (index or before/after existing field), optional `payload` (type-specific).
-* **Flow**: GET form → create new block (generate UUID) → splice into `blocks` → PATCH full form.
-* **Output**: updated form (or the new block) + backup of prior form JSON.
+* **Inputs**: `formId`, `type`, `label`, `placeholder?` (for input types), `optionsJson?` (for option-based types), `position` (end/index/before/after), optional `payload` (type-specific; disabled for option types).
+* **Flow**: GET form → create block(s) → splice into `blocks` → PATCH full form.
+* **Notes**:
+  * For option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select), the node creates one block per option from `optionsJson`; `payload` is hidden/ignored for these types.
+  * For input types (TEXT/EMAIL/LINK/PHONE/NUMBER/DATE/TIME/TEXTAREA), `placeholder` is merged into payload; if empty, the node falls back to `label` for placeholder.
+* **Output**: updated form (or the new block(s)) + backup of prior form JSON.
 
 ### C) **Update Field**
 
@@ -96,52 +99,58 @@ applyTo: '**'
 
 ## 3) Node UI/UX Notes (n8n `properties`)
 
-* [ ] Add **big warning** to all write ops: *“This rewrites form `blocks`. We fetch and merge for you, but anything not included may be removed. Use Dry‑Run and Backup.”*
-* [ ] **Field Selector**: radio → *By UUID* / *By Label*. If *By Label*, node calls **List Questions** to resolve.
-* [ ] **Dry‑Run/Preview**: boolean. If true → output proposed `blocks` + a field‑level diff; skip PATCH.
-* [ ] **Backup**: default ON. Output `previousForm` (full JSON) in `binary` or `json` for rollback.
-* [ ] **Optimistic Concurrency**: when enabled, compare `updatedAt` from initial GET vs a fast GET before PATCH; abort if changed.
+* [x] Add **big warning** to all write ops: *“This rewrites form `blocks`. We fetch and merge for you, but anything not included may be removed. Use Dry‑Run and Backup.”*
+* [x] **Field Selector**: radio → *By UUID* / *By Label*. If *By Label*, node calls **List Questions** to resolve.
+* [x] **Dry‑Run/Preview**: boolean. If true → output proposed `blocks` + a field‑level diff; skip PATCH.
+* [x] **Backup**: default ON. Output `previousForm` (full JSON) in `binary` or `json` for rollback.
+* [x] **Optimistic Concurrency**: when enabled, compare `updatedAt` from initial GET vs a fast GET before PATCH; abort if changed.
+
+Additional UX in v1.2
+
+* [x] Add Field: `Options (JSON)` input for option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select); the node generates one option block per item and hides `Payload (JSON)` to avoid confusion.
+* [x] Add Field: `Placeholder` input for input types (Short/Long Text, Email, URL, Phone, Number, Date, Time). If left empty, `label` is used as placeholder.
+* [x] Remove non-mapped UI types (e.g., Yes/No). Use Multiple Choice with two options or a single Checkbox instead.
 
 ---
 
 ## 4) Data & Helpers
 
-* [ ] **Types**: define lightweight interfaces (`TallyForm`, `TallyBlock`, `TallySelectOption`) with index signatures to allow pass‑through fields.
-* [ ] **ID utils**: `generateUuid()`, `findBlockByUuid()`, `findBlockByLabel(questions, label)`.
-* [ ] **Diff**: shallow diff for `payload` (and optionally options list) to power Dry‑Run summary.
-* [ ] **HTTP**: extend `tallyApiRequest()` to accept `PATCH` and generic body; keep headers & base URL.
+* [x] **Types**: define lightweight interfaces (`TallyForm`, `TallyBlock`, `TallySelectOption`) with index signatures to allow pass‑through fields.
+* [x] **ID utils**: `generateUuid()`, `findBlockByUuid()`, `findBlockByLabel(questions, label)`.
+* [x] **Diff**: shallow diff for `payload` (and optionally options list) to power Dry‑Run summary.
+* [x] **HTTP**: extend `tallyApiRequest()` to accept `PATCH` and generic body; keep headers & base URL.
 
 ---
 
 ## 5) File-by-File Tasks (Copilot: create/modify exactly)
 
-* [ ] `nodes/TallySo/TallySo.node.ts`
+* [x] `nodes/TallySo/TallySo.node.ts`
 
-  * [ ] Add `operations`: `listQuestions`, `addField`, `updateField`, `deleteField`, `syncSelectOptions`, `copyQuestions`, *(optional)* `rollbackForm`.
-  * [ ] Add inputs for each operation (resource: `form`).
-  * [ ] Implement `execute()` branches for each op using helpers below.
-  * [ ] Add `methods.loadOptions.getForms` (already exists) + `getQuestions(formId)` for question dropdowns.
+  * [x] Add `operations`: `listQuestions`, `addField`, `updateField`, `deleteField`, `syncSelectOptions`, `copyQuestions`, *(optional)* `rollbackForm`.
+  * [x] Add inputs for each operation (resource: `form`).
+  * [x] Implement `execute()` branches for each op using helpers below.
+  * [x] Add `methods.loadOptions.getForms` (already exists) + `getQuestions(formId)` for question dropdowns.
 
-* [ ] `nodes/TallySo/makeTallyRequest.ts`
+* [x] `nodes/TallySo/makeTallyRequest.ts`
 
-  * [ ] Allow `PATCH` type; export convenience wrappers: `getForm(formId)`, `listQuestions(formId)`, `updateForm(formId, body)`.
+  * [x] Allow `PATCH` type; export convenience wrappers: `getForm(formId)`, `listQuestions(formId)`, `updateForm(formId, body)`.
 
-* [ ] `nodes/TallySo/blockUtils.ts` *(new)*
+* [x] `nodes/TallySo/blockUtils.ts` *(new)*
 
-  * [ ] `cloneForm(form)`, `replaceBlock(blocks, uuid, newBlock)`, `insertBlock(blocks, block, position)`, `removeBlocks(blocks, uuids)`, `updateSelectOptions(block, options, preserveExtras)`.
-  * [ ] `ensureUniqueUuids(blocks)`; `newBlockTemplate(type, label, payload)`.
+  * [x] `cloneForm(form)`, `replaceBlock(blocks, uuid, newBlock)`, `insertBlock(blocks, block, position)`, `removeBlocks(blocks, uuids)`, `updateSelectOptions(block, options, preserveExtras)`.
+  * [x] `ensureUniqueUuids(blocks)`; `newBlockTemplate(type, label, payload)`.
 
-* [ ] `nodes/TallySo/diff.ts` *(new)*
+* [x] `nodes/TallySo/diff.ts` *(new)*
 
-  * [ ] `diffBlocks(before, after)` → summarize changes per `blockUuid` (added/updated/removed, options delta counts).
+  * [x] `diffBlocks(before, after)` → summarize changes per `blockUuid` (added/updated/removed, options delta counts).
 
-* [ ] `README.md`
+* [x] `README.md`
 
-  * [ ] Document new operations, warnings, examples, and sample workflows.
+  * [x] Document new operations, warnings, examples, and sample workflows.
 
-* [ ] `package.json`
+* [x] `package.json`
 
-  * [ ] Ensure scripts use **pnpm** (`pnpm lint`, `pnpm build`, `pnpm dev`).
+  * [x] Ensure scripts use **pnpm** (`pnpm lint`, `pnpm build`, `pnpm dev`).
 
 ---
 
@@ -207,13 +216,13 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 
 ## 7) Acceptance Criteria
 
-* [ ] **List Questions** returns question metadata incl. block UUIDs and labels.
-* [ ] **Add/Update/Delete/Sync**: execute without requiring users to paste full form JSON.
-* [ ] **PATCH safety**: node always fetches latest, merges, and patches full `blocks`.
-* [ ] **Warnings**: UI copy present on all write ops; Dry‑Run + Backup flags available; Optimistic mode works.
-* [ ] **Copy Questions**: copied fields appear in dest form; UUIDs are unique; position respected.
-* [ ] **Docs**: README updated with examples and cautions.
-* [ ] **Lint**: `eslint-plugin-n8n-nodes-base` passes.
+* [x] **List Questions** returns question metadata incl. block UUIDs and labels.
+* [x] **Add/Update/Delete/Sync**: execute without requiring users to paste full form JSON.
+* [x] **PATCH safety**: node always fetches latest, merges, and patches full `blocks`.
+* [x] **Warnings**: UI copy present on all write ops; Dry‑Run + Backup flags available; Optimistic mode works.
+* [x] **Copy Questions**: copied fields appear in dest form; UUIDs are unique; position respected.
+* [x] **Docs**: README updated with examples and cautions.
+* [x] **Lint**: `eslint-plugin-n8n-nodes-base` passes.
 
 ---
 
@@ -233,8 +242,8 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 
 * [ ] Install: `pnpm i`
 * [ ] Dev watch: `pnpm dev`
-* [ ] Build: `pnpm build`
-* [ ] Lint: `pnpm lint`
+* [x] Build: `pnpm build`
+* [x] Lint: `pnpm lint`
 * [ ] Node engine: **>= 20.19**
 
 *(If migrating to `@n8n/node-cli`, ensure parity: build, watch, publish workflows; but not required for these features.)*
@@ -281,3 +290,33 @@ await updateForm(destFormId, { ...destForm, blocks: newBlocks });
 * Support for grouped blocks / conditional logic cloning.
 * Webhook trigger convenience wrapper for submissions.
 * Auto‑paginate submissions and questions when Tally adds pagination.
+
+---
+
+## Agent Progress Notes — 2025‑09‑14
+
+Context: Work is happening on branch `feat/tally-field-ops`. Build and lint pass via `@n8n/node-cli` (pnpm). Major features in this iteration are implemented and verified locally.
+
+What’s implemented
+- New form operations: List Questions, Add Field, Update Field, Delete Field, Sync Select Options, Copy Questions, and Rollback Form.
+- Safety pattern: always GET → clone/mutate → PATCH full `blocks`; supports Dry‑Run preview, automatic Backup output, and Optimistic Concurrency (compares `updatedAt`).
+- Title support: providing a Title creates a separate `TITLE` block before the field; `groupType` for TITLE is `QUESTION`.
+- Type mapping and payloads: input types use `INPUT_*` variants (TEXT/EMAIL/LINK/PHONE/NUMBER/DATE/TIME/TEXTAREA) with `payload.isRequired` and `placeholder` support; placeholder falls back to the Label when not set.
+- Option-based types (Dropdown/Multiple Choice/Checkboxes/Multi-select) are created via `Options (JSON)` as per-option blocks (correct type/groupType); `Payload (JSON)` is hidden for these types to avoid confusion.
+- URL mapping: `URL` uses `INPUT_LINK`. No fallback logic required.
+- Removed the "Template from existing field" UI and logic.
+- Removed non-mapped Yes/No type from the UI.
+
+Known quirks and tips
+- Tally requires both `uuid` and a distinct `groupUuid` per block; `groupType` usually matches `type` except for `TITLE` which uses `QUESTION`.
+- PATCH replaces the entire `blocks` array; never send partial arrays. Always include existing `settings` and `name` fields when patching.
+- Option-based fields are modeled as per-option blocks with a shared `groupUuid` and the correct `groupType`.
+
+Verification checklist
+- Build: `pnpm build` → PASS; Lint: `pnpm lint` → PASS.
+- Dry‑Run shows a `diffBlocks` summary and proposedBlocks; turning Dry‑Run off commits via PATCH.
+- After any write op with Optimistic Concurrency ON, the node aborts if `updatedAt` changed.
+
+Next small steps
+- Broader field type smoke tests (PHONE, NUMBER, DATE/TIME, RATING, FILE_UPLOAD) to catch schema edge cases.
+- Add more README examples for Update/Delete and Copy Questions.

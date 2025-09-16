@@ -14,7 +14,7 @@ const TALLY_API_URL = 'https://api.tally.so';
 export async function tallyApiRequest(
     this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
     endpoint: string,
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' = 'GET',
     body?: IDataObject,
 ): Promise<any> {
     try {
@@ -39,6 +39,58 @@ export async function tallyApiRequest(
         }
         throw new NodeApiError(this.getNode(), {
             message: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+    }
+}
+
+// Convenience wrappers for Tally endpoints used by field operations
+export async function getForm(
+    this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+    formId: string,
+): Promise<any> {
+    return tallyApiRequest.call(this, `/forms/${formId}`, 'GET');
+}
+
+export async function listQuestions(
+    this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+    formId: string,
+): Promise<any[]> {
+    const data = await tallyApiRequest.call(this, `/forms/${formId}/questions`, 'GET');
+    // Normalize to array if API wraps in { items }
+    if (Array.isArray(data)) return data as any[];
+    if ((data as any)?.items && Array.isArray((data as any).items)) return (data as any).items as any[];
+    return (data as any)?.questions || [];
+}
+
+export async function updateForm(
+    this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+    formId: string,
+    body: IDataObject,
+): Promise<any> {
+    try {
+        return await tallyApiRequest.call(this, `/forms/${formId}`, 'PATCH', body);
+    } catch (error) {
+        // Enhanced error for debugging 400s
+        const message = error instanceof Error ? error.message : String(error);
+        throw new NodeApiError(this.getNode(), {
+            message: `PATCH /forms/${formId} failed: ${message}`,
+            description: `Request body: ${JSON.stringify(body, null, 2)}`,
+        });
+    }
+}
+
+// Create a new form
+export async function createForm(
+    this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+    body: IDataObject,
+): Promise<any> {
+    try {
+        return await tallyApiRequest.call(this, `/forms`, 'POST', body);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new NodeApiError(this.getNode(), {
+            message: `POST /forms failed: ${message}`,
+            description: `Request body: ${JSON.stringify(body, null, 2)}`,
         });
     }
 }

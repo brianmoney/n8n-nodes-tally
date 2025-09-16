@@ -1,6 +1,15 @@
 ---
 applyTo: '**'
 ---
+You are assisting with development of an **n8n-node community project**.  
+
+
+## Memory & task tracking
+- Use the **Remember MCP tool** as a persistent memory store.
+  - Store tasks, TODOs, test data, and dev notes here.
+  - Recall stored info when improving or extending the project.
+  - Example: “Remember test credentials for ShipBob sandbox” or “Track pending refactor of execute()”.
+
 # Using @n8n/node-cli in this repo
 
 This repository is already set up with @n8n/node-cli for local development, hot‑reload, linting, building, and releasing.
@@ -78,3 +87,18 @@ If issues persist, run with verbose logs and share output:
 ```bash
 DEBUG=* pnpm dev
 ```
+
+## Environment variable deprecation notice
+
+The n8n team announced a deprecation affecting environment access from nodes:
+
+- N8N_BLOCK_ENV_ACCESS_IN_NODE — the default will change from false to true in a future version.
+
+If your workflows or custom nodes access environment variables from Code node or expressions, set:
+
+```bash
+N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+```
+
+See docs for details and security implications:
+https://docs.n8n.io/hosting/configuration/environment-variables/security/

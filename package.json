@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-tally",
-	"version": "1.0.0",
+	"version": "1.2.0",
 	"description": "n8n community node for Tally.so forms and submissions",
 	"keywords": [
 		"n8n-community-node-package",
