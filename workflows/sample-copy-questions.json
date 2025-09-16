@@ -1,0 +1,65 @@
+{
+  "name": "Copy Selected Questions",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "listQuestions",
+        "formId": "REPLACE_SOURCE_ID"
+      },
+      "name": "List Source Questions",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "copyQuestions",
+        "sourceFormId": "REPLACE_SOURCE_ID",
+        "destFormId": "REPLACE_DEST_ID",
+        "questionUuids": [
+          "REPLACE_UUID_1",
+          "REPLACE_UUID_2"
+        ],
+        "insertPositionMode": "end",
+        "dryRun": true
+      },
+      "name": "Copy Questions (Dry‑Run)",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "List Source Questions": {
+      "main": [
+        [
+          {
+            "node": "Copy Questions (Dry‑Run)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -4,8 +4,10 @@ This is an n8n community node that lets you interact with [Tally.so](https://tal
 
 [Tally.so](https://tally.so) is a form builder that allows you to create beautiful forms and collect responses. This node enables you to:
 
-- 📋 **Retrieve forms** - Get all your forms or fetch details for a specific form
-- 📊 **Access submissions** - Pull form responses for processing and automation
+- 📋 Retrieve forms and questions, and manage fields safely
+- ✏️ Add/Update/Delete fields, Copy questions between forms, and Rollback
+- 🆕 Create a new form from JSON (Draft/Published)
+- 📊 Access submissions
 
 ## Installation
 
@@ -94,13 +96,22 @@ Title handling when copying:
 - Tip: Use Dry‑Run first to preview the proposed blocks and confirm titles appear as expected without duplication.
 
 #### Rollback Form (v1.2)
-- Purpose: Restore, copy, or create forms from JSON
-- Inputs: Form (select a destination form or “— Create New —”), Backup Form JSON (or leave empty to consume incoming `$json.backup`, `$json.form`, or `$json`)
+- Purpose: Restore or copy forms from JSON
+- Inputs: Form (destination form to overwrite), Backup Form JSON (or leave empty to consume incoming `$json.backup`, `$json.form`, or `$json`)
 - Modes:
   1) Save JSON and restore later: keep the `previousForm` JSON from write ops and use it here to roll back.
   2) Copy an existing form: wire Tally “Get Form” → “Rollback Form” and leave JSON empty; the node uses `$json.form`. This works across accounts/instances.
-  3) Create New: choose “— Create New —” in the Form dropdown to POST a brand new form from the JSON.
 - Safety: Dry‑Run/Preview shows proposed blocks and a diff for overwrite flows; Optimistic Concurrency applies to overwrite (PATCH) only.
+
+#### Create Form (v1.2)
+- Purpose: Create a brand new form from JSON
+- Inputs: Form JSON (or leave empty to consume incoming `$json.form` or `$json`), optional Workspace, Final Status (Draft/Published/Blank)
+- Behavior:
+  - POST /forms with `{ workspaceId, status: 'BLANK', blocks, settings }` (FORM_TITLE ensured)
+  - Immediately PATCH /forms/{id} with full `blocks` (and name/settings) to persist content
+  - Optionally PATCH `status` to Draft or Published so it appears in the UI
+  - Dry‑Run emits `{ preview: true, createBody, patchBody, targetStatus }` without any changes
+- Tip: For cross‑account cloning, fetch with Account A, create with Account B (select B’s workspace).
 
 ### Submission Resource
 
@@ -158,15 +169,15 @@ Tally.so (Get All Forms) → Tally.so (Get All Submissions) → Database (Insert
 2. For each form, retrieve submissions
 3. Store in your database for analysis
 
-### 4. Airtable → Tally Select Sync (v1.2)
+### 4. Clone a form into a new one (v1.2)
 
 ```
-Airtable (List Records) → (Map to {label, value}) → Tally.so (Sync Select Options, Dry‑Run) → Tally.so (Sync Select Options)
+Tally.so (Get Form - source) → Tally.so (Create Form - select target Workspace, Final Status: Draft/Published)
 ```
 
-1. Map Airtable fields to label/value pairs per record
-2. Use the Tally node’s Sync Select Options with Dry‑Run first to preview changes
-3. Commit the sync by disabling Dry‑Run
+1. Get the source form JSON
+2. Create Form with that JSON, optionally to a different account/workspace
+3. Choose Draft or Published so it shows up immediately
 
 ### 5. Copy Fields Between Forms (v1.2)
 ### 6. Add Field examples (v1.2)
@@ -210,10 +221,11 @@ If a form changed during your workflow, the node will abort with a clear message
 ## API Information
 
 This node uses the Tally.so REST API endpoints:
-- `GET /forms` - List all forms
+- `GET /forms` - List forms
 - `GET /forms/{id}` - Get specific form details  
 - `GET /forms/{id}/submissions` - Get form submissions
 - `GET /forms/{id}/questions` - List questions for a form
+- `POST /forms` - Create a form
 - `PATCH /forms/{id}` - Update a form (full blocks array is provided by this node)
 
 The node automatically handles:
@@ -271,9 +283,10 @@ Known limitations:
 ## Version History
 
 - v1.2.0
-  - New field operations: List Questions, Add/Update/Delete Field, Sync Select Options, Copy Questions, Rollback Form
-  - Safety: Dry‑Run preview, automatic Backup JSON, Optimistic Concurrency (updatedAt)
-  - Safe PATCH flow: fetch → modify → patch full `blocks`
+  - New field ops: List Questions, Add/Update/Delete Field, Copy Questions, Rollback
+  - Create Form: POST + PATCH blocks; Final Status to Draft/Published
+  - Safety: Dry‑Run preview, Backup JSON, Optimistic Concurrency
+  - PATCH flow: fetch → modify → patch full `blocks`
 
 - v1.0.0
   - Initial release with forms and submissions

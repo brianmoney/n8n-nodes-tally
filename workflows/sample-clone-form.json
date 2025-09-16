@@ -1,0 +1,59 @@
+{
+  "name": "Clone Tally Form (Create + Draft)",
+  "nodes": [
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "get",
+        "formId": "REPLACE_SOURCE_ID"
+      },
+      "name": "Get Source Form",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        260,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "1",
+          "name": "Tally.so API (Source)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "form",
+        "operation": "createForm",
+        "formJson": "={{$json.form}}",
+        "finalStatus": "DRAFT"
+      },
+      "name": "Create New Form (Draft)",
+      "type": "n8n-nodes-tallyso.tallySo",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ],
+      "credentials": {
+        "tallySoApi": {
+          "id": "2",
+          "name": "Tally.so API (Target)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Get Source Form": {
+      "main": [
+        [
+          {
+            "node": "Create New Form (Draft)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

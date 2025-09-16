@@ -131,6 +131,12 @@ export class TallySo implements INodeType {
                         description: 'Rollback a form to a previous JSON (from backup output). WARNING: This rewrites the form blocks via PATCH.',
                         action: 'Rollback a form',
                     },
+                    {
+                        name: 'Create Form',
+                        value: 'createForm',
+                        description: 'Create a new form from JSON or incoming item',
+                        action: 'Create a form',
+                    },
                 ],
                 default: 'getAll',
             },
@@ -519,6 +525,45 @@ export class TallySo implements INodeType {
                 description: 'Full form JSON previously output as backup. Leave empty to use incoming item: $json.backup || $json.form || $json',
                 displayOptions: { show: { resource: ['form'], operation: ['rollbackForm'] } },
             },
+            // Create Form inputs
+            {
+                displayName: 'Form JSON',
+                name: 'formJson',
+                type: 'json',
+                default: '{}',
+                description: 'Full form JSON to create. Leave empty to use incoming item: $json.form || $json',
+                displayOptions: { show: { resource: ['form'], operation: ['createForm'] } },
+            },
+            {
+                displayName: 'Workspace',
+                name: 'workspaceId',
+                type: 'options',
+                typeOptions: { loadOptionsMethod: 'getWorkspaces' },
+                default: '',
+                description: 'Target workspace for the new form. If empty, the first available workspace for these credentials is used.',
+                displayOptions: { show: { resource: ['form'], operation: ['createForm'] } },
+            },
+            {
+                displayName: 'Publish After Create',
+                name: 'publishAfterCreate',
+                type: 'boolean',
+                default: false,
+                description: 'If enabled, immediately publish the newly created form so it appears in Get All results',
+                displayOptions: { show: { resource: ['form'], operation: ['createForm'] } },
+            },
+            {
+                displayName: 'Final Status',
+                name: 'finalStatus',
+                type: 'options',
+                options: [
+                    { name: 'Draft', value: 'DRAFT', description: 'Visible in Tally as a draft' },
+                    { name: 'Published', value: 'PUBLISHED', description: 'Live form' },
+                    { name: 'Leave as Blank', value: 'BLANK', description: 'Keep server-default BLANK' },
+                ],
+                default: 'DRAFT',
+                description: 'What status to set after creating the form',
+                displayOptions: { show: { resource: ['form'], operation: ['createForm'] } },
+            },
             // Safety flags for write ops
             {
                 displayName: 'Dry-Run / Preview',
@@ -526,7 +571,7 @@ export class TallySo implements INodeType {
                 type: 'boolean',
                 default: false,
                 description: 'If enabled, do not PATCH. Output proposed blocks and a diff only.',
-                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','copyQuestions','rollbackForm'] } },
+                displayOptions: { show: { resource: ['form'], operation: ['addField','updateField','deleteField','copyQuestions','rollbackForm','createForm'] } },
             },
             {
                 displayName: 'Backup Previous Form',
@@ -575,10 +620,6 @@ export class TallySo implements INodeType {
                     const message = error instanceof Error ? error.message : 'Unknown error';
                     throw new NodeOperationError(this.getNode(), `Failed to load forms: ${message}`);
                 }
-            },
-            async getFormsWithCreateNew(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-                const base = await (this as any).getForms();
-                return [{ name: '— Create New —', value: '__CREATE_NEW__', description: 'Create a new form from JSON' }, ...base];
             },
             async getQuestions(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
                 try {
@@ -655,11 +696,31 @@ export class TallySo implements INodeType {
                     throw new NodeOperationError(this.getNode(), `Failed to load source questions: ${message}`);
                 }
             },
+            async getWorkspaces(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+                try {
+                    // No direct workspaces endpoint documented; infer from forms or fallback to single unnamed workspace
+                    const data = await tallyApiRequest.call(this, '/forms');
+                    const forms = ((data as any)?.items || data || []) as any[];
+                    const byId = new Map<string, string>();
+                    for (const f of forms) {
+                        if (f?.workspaceId) byId.set(String(f.workspaceId), f?.workspaceName || 'Workspace');
+                    }
+                    const out: INodePropertyOptions[] = Array.from(byId.entries()).map(([value, name]) => ({ name, value }));
+                    return out.length ? out : [{ name: 'Default Workspace', value: '' }];
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Unknown error';
+                    throw new NodeOperationError(this.getNode(), `Failed to load workspaces: ${message}`);
+                }
+            },
         },
     };
 
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-        const items = this.getInputData();
+        let items = this.getInputData();
+        // If there is no incoming data (common for fetch/read ops), run once with an empty item
+        if (!items || items.length === 0) {
+            items = [{ json: {} } as INodeExecutionData];
+        }
         const returnData: INodeExecutionData[] = [];
         const resource = this.getNodeParameter('resource', 0) as string;
         const operation = this.getNodeParameter('operation', 0) as string;
@@ -676,6 +737,10 @@ export class TallySo implements INodeType {
                                 pairedItem: { item: i },
                             });
                         }
+                    } else if (operation === 'get') {
+                        const formId = this.getNodeParameter('formId', i) as string;
+                        const form = await apiGetForm.call(this, formId);
+                        returnData.push({ json: form, pairedItem: { item: i } });
                     } else if (operation === 'listQuestions') {
                         const formId = this.getNodeParameter('formId', i) as string;
                         const questions = await apiListQuestions.call(this, formId);
@@ -1085,28 +1150,121 @@ export class TallySo implements INodeType {
                         }
 
                         const nextBlocks = candidate.blocks as any[];
+                        const before = await apiGetForm.call(this, formId);
+                        if (dryRun) {
+                            returnData.push({ json: { preview: true, formId, proposedBlocks: nextBlocks, diff: diffBlocks(before.blocks || [], nextBlocks) }, pairedItem: { item: i } });
+                            continue;
+                        }
+                        const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: candidate.name ?? before.name, settings: candidate.settings ?? before.settings });
+                        returnData.push({ json: { updated: true, form: resp }, pairedItem: { item: i } });
+                    } else if (operation === 'createForm') {
+                        const dryRun = this.getNodeParameter('dryRun', i, false) as boolean;
+                        const formJsonParam = this.getNodeParameter('formJson', i, {}) as any;
+                        const publishAfterCreate = this.getNodeParameter('publishAfterCreate', i, false) as boolean;
+                        const finalStatus = this.getNodeParameter('finalStatus', i, 'DRAFT') as string;
 
-                        // Create New path
-                        if (formId === '__CREATE_NEW__') {
-                            if (dryRun) {
-                                returnData.push({ json: { preview: true, createNew: true, proposedBlocks: nextBlocks, name: candidate.name, settings: candidate.settings }, pairedItem: { item: i } });
-                                continue;
+                        let parsedParam: any = formJsonParam;
+                        if (typeof parsedParam === 'string') {
+                            try { parsedParam = JSON.parse(parsedParam); } catch { parsedParam = {}; }
+                        }
+                        const incoming = (items[i]?.json || {}) as any;
+                        const candidate = parsedParam && Object.keys(parsedParam).length ? parsedParam
+                            : (incoming?.form && typeof incoming.form === 'object') ? incoming.form
+                            : incoming;
+
+                        if (!candidate || !Array.isArray(candidate.blocks)) {
+                            throw new NodeOperationError(this.getNode(), 'No valid form JSON found. Provide Form JSON or pass it from previous node ($json.form or $json).');
+                        }
+
+                        // Sanitize blocks for creation according to public API
+                        const groupTypeFor = (type: string): string => {
+                            switch (type) {
+                                case 'FORM_TITLE': return 'FORM_TITLE';
+                                case 'TITLE': return 'QUESTION';
+                                case 'DROPDOWN_OPTION': return 'DROPDOWN';
+                                case 'MULTIPLE_CHOICE_OPTION': return 'MULTIPLE_CHOICE';
+                                case 'MULTI_SELECT_OPTION': return 'MULTI_SELECT';
+                                case 'CHECKBOX': return 'CHECKBOXES';
+                                case 'RANKING_OPTION': return 'RANKING';
+                                default: return type;
                             }
-                            const body: any = {
-                                name: candidate.name || 'Untitled Form',
-                                settings: candidate.settings || {},
-                                blocks: nextBlocks,
-                            };
-                            const resp = await apiCreateForm.call(this, body);
-                            returnData.push({ json: { created: true, form: resp }, pairedItem: { item: i } });
+                        };
+                        const groupMap = new Map<string, string>();
+                        const remapGroup = (type: string, old?: string) => {
+                            const key = `${type}:${old || ''}`;
+                            if (!groupMap.has(key)) groupMap.set(key, generateUuid());
+                            return groupMap.get(key)!;
+                        };
+                        const sanitizedBlocks = (candidate.blocks as any[]).map((b) => {
+                            const type = String(b?.type || '').toUpperCase();
+                            const out: any = { ...(b || {}) };
+                            out.uuid = generateUuid();
+                            out.groupType = groupTypeFor(type);
+                            out.groupUuid = remapGroup(type, b?.groupUuid || b?.uuid);
+                            return out;
+                        });
+                        // Ensure a FORM_TITLE block exists and normalize it
+                        let hasTitle = sanitizedBlocks.some((b) => b.type === 'FORM_TITLE');
+                        if (!hasTitle) {
+                            const titleText = (candidate.name && String(candidate.name).trim()) || 'Untitled Form';
+                            const uuid = generateUuid();
+                            sanitizedBlocks.unshift({
+                                uuid,
+                                type: 'FORM_TITLE',
+                                groupUuid: uuid,
+                                groupType: 'FORM_TITLE',
+                                payload: {
+                                    safeHTMLSchema: [[titleText]],
+                                    title: titleText,
+                                },
+                            } as any);
+                            hasTitle = true;
+                        }
+                        // Normalize title blocks
+                        for (const b of sanitizedBlocks) {
+                            if (b.type === 'FORM_TITLE') {
+                                b.groupType = 'FORM_TITLE';
+                                b.groupUuid = b.uuid;
+                            }
+                        }
+
+                        // Always derive workspaceId from the account tied to THESE credentials (ignore candidate.workspaceId)
+                        let workspaceId: string | undefined;
+                        try {
+                            const formsList = await tallyApiRequest.call(this, '/forms');
+                            const items = ((formsList as any)?.items || formsList || []) as any[];
+                            const found = items.find((f) => typeof f?.workspaceId === 'string');
+                            if (found?.workspaceId) workspaceId = found.workspaceId;
+                        } catch {
+                            // ignore workspace discovery errors; will proceed without overriding
+                        }
+                        // Allow user to override via explicit selection
+                        const workspaceParam = (this.getNodeParameter('workspaceId', i, '') as string) || '';
+                        if (workspaceParam) workspaceId = workspaceParam;
+                        const postBody: any = {
+                            ...(workspaceId ? { workspaceId } : {}),
+                            status: 'BLANK',
+                            blocks: sanitizedBlocks,
+                            settings: candidate.settings || {},
+                        };
+
+                        if (dryRun) {
+                            returnData.push({ json: { preview: true, createNew: true, createBody: postBody, patchBody: { blocks: sanitizedBlocks, name: candidate.name || 'Untitled Form', settings: candidate.settings || {} }, targetStatus: finalStatus || (publishAfterCreate ? 'PUBLISHED' : 'BLANK') }, pairedItem: { item: i } });
+                            continue;
+                        }
+
+                        // Single-step POST create with full payload
+                        const created = await apiCreateForm.call(this, postBody);
+                        // Ensure blocks are persisted via PATCH (some APIs may treat POST blocks as draft)
+                        const patched = created?.id
+                            ? await apiUpdateForm.call(this, created.id, { blocks: sanitizedBlocks, settings: candidate.settings || {}, name: candidate.name || 'Untitled Form' })
+                            : created;
+                        const targetStatus = finalStatus || (publishAfterCreate ? 'PUBLISHED' : 'BLANK');
+                        if (created?.id && targetStatus && targetStatus !== 'BLANK') {
+                            const statusResp = await apiUpdateForm.call(this, created.id, { status: targetStatus } as any);
+                            returnData.push({ json: { created: true, form: statusResp, statusUpdatedTo: targetStatus }, pairedItem: { item: i } });
                         } else {
-                            const before = await apiGetForm.call(this, formId);
-                            if (dryRun) {
-                                returnData.push({ json: { preview: true, formId, proposedBlocks: nextBlocks, diff: diffBlocks(before.blocks || [], nextBlocks) }, pairedItem: { item: i } });
-                                continue;
-                            }
-                            const resp = await apiUpdateForm.call(this, formId, { blocks: nextBlocks, name: candidate.name ?? before.name, settings: candidate.settings ?? before.settings });
-                            returnData.push({ json: { updated: true, form: resp }, pairedItem: { item: i } });
+                            returnData.push({ json: { created: true, form: patched, statusUpdatedTo: 'BLANK' }, pairedItem: { item: i } });
                         }
                     }
                 } else if (resource === 'submission') {
