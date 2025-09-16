@@ -1,6 +1,15 @@
 ---
 applyTo: '**'
 ---
+You are assisting with development of an **n8n-node community project**.  
+
+
+## Memory & task tracking
+- Use the **Remember MCP tool** as a persistent memory store.
+  - Store tasks, TODOs, test data, and dev notes here.
+  - Recall stored info when improving or extending the project.
+  - Example: “Remember test credentials for ShipBob sandbox” or “Track pending refactor of execute()”.
+
 # Using @n8n/node-cli in this repo
 
 This repository is already set up with @n8n/node-cli for local development, hot‑reload, linting, building, and releasing.
